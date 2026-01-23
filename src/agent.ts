@@ -23,17 +23,8 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   const fullPrompt = systemContext ? `${systemContext}\n\n${prompt}` : prompt;
 
   const options: Record<string, unknown> = {
-    allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
+    allowedTools: ["Glob", "Grep"],
     permissionMode: "bypassPermissions",
-    mcpServers: {
-      todoist: {
-        command: "node",
-        args: ["./dist/mcp/todoist.js"],
-        env: {
-          TODOIST_API_TOKEN: env.todoistApiToken,
-        },
-      },
-    },
   };
 
   if (sessionId) {
