@@ -26,7 +26,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     prompt: fullPrompt,
     options: {
       allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
-      permissionMode: "acceptEdits",
+      permissionMode: "bypassPermissions",
       mcpServers: {
         todoist: {
           command: "node",
