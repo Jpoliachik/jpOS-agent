@@ -1,6 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { getSession, setSession } from "./sessions.js";
-import { env } from "./config.js";
 
 interface AgentResponse {
   result: string;
@@ -22,21 +21,16 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
 
   const fullPrompt = systemContext ? `${systemContext}\n\n${prompt}` : prompt;
 
-  const options: Record<string, unknown> = {
-    allowedTools: ["Glob", "Grep"],
-    permissionMode: "bypassPermissions",
-  };
-
-  if (sessionId) {
-    options.resume = sessionId;
-  }
-
-  for await (const message of query({ prompt: fullPrompt, options })) {
+  for await (const message of query({
+    prompt: fullPrompt,
+    options: {
+      allowedTools: ["Read", "Edit", "Glob"],
+      permissionMode: "acceptEdits",
+      ...(sessionId ? { resume: sessionId } : {}),
+    },
+  })) {
     // Capture session ID from init message
     if (
-      typeof message === "object" &&
-      message !== null &&
-      "type" in message &&
       message.type === "system" &&
       "subtype" in message &&
       message.subtype === "init" &&
@@ -46,9 +40,18 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       setSession(externalId, sessionId);
     }
 
+    // Print human-readable output (for debugging)
+    if (message.type === "assistant" && message.message?.content) {
+      for (const block of message.message.content) {
+        if ("text" in block) {
+          result = block.text as string;
+        }
+      }
+    }
+
     // Capture final result
-    if (typeof message === "object" && message !== null && "result" in message) {
-      result = message.result as string;
+    if (message.type === "result") {
+      console.log(`Done: ${message.subtype}`);
     }
   }
 
