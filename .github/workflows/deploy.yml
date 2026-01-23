@@ -15,7 +15,7 @@ jobs:
           username: ${{ secrets.DROPLET_USER }}
           key: ${{ secrets.DROPLET_SSH_KEY }}
           script: |
-            cd ~/jpOS
+            cd ~/jpOS-agent
             git pull origin main
             npm install --production=false
             npm run build
