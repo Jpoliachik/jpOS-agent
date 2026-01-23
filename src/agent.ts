@@ -1,5 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { getSession, setSession } from "./sessions.js";
+import { env } from "./config.js";
 
 interface AgentResponse {
   result: string;
@@ -24,8 +25,17 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   for await (const message of query({
     prompt: fullPrompt,
     options: {
-      allowedTools: ["Read", "Edit", "Glob"],
+      allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
       permissionMode: "acceptEdits",
+      mcpServers: {
+        todoist: {
+          command: "node",
+          args: ["/root/jpOS-agent/dist/mcp/todoist.js"],
+          env: {
+            TODOIST_API_TOKEN: env.todoistApiToken,
+          },
+        },
+      },
       ...(sessionId ? { resume: sessionId } : {}),
     },
   })) {
