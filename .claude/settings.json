@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Bash",
+      "Glob",
+      "Grep",
+      "WebSearch",
+      "WebFetch",
+      "mcp__todoist__todoist_list_tasks",
+      "mcp__todoist__todoist_create_task",
+      "mcp__todoist__todoist_complete_task",
+      "mcp__todoist__todoist_list_projects"
+    ]
+  }
+}

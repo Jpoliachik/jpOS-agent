@@ -26,7 +26,9 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     prompt: fullPrompt,
     options: {
       allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
-      permissionMode: "bypassPermissions",
+      permissionMode: "acceptEdits",
+      settingSources: ["project"],
+      cwd: "/root/jpOS-agent",
       mcpServers: {
         todoist: {
           command: "node",
