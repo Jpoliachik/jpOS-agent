@@ -3,8 +3,11 @@ import { env } from "../config.js";
 import { runAgent } from "../agent.js";
 import { clearSession } from "../sessions.js";
 
+let botInstance: Bot | null = null;
+
 export function createTelegramBot(): Bot {
   const bot = new Bot(env.telegramBotToken);
+  botInstance = bot;
 
   // Auth middleware - only allow configured user
   bot.use(async (ctx, next) => {
@@ -64,4 +67,19 @@ export function createTelegramBot(): Bot {
   });
 
   return bot;
+}
+
+export async function sendTelegramMessage(text: string): Promise<void> {
+  if (!botInstance) {
+    console.error("Telegram bot not initialized");
+    return;
+  }
+
+  try {
+    await botInstance.api.sendMessage(env.allowedTelegramUserId, text, {
+      parse_mode: "Markdown",
+    });
+  } catch (error) {
+    console.error("Failed to send Telegram message:", error);
+  }
 }

@@ -114,12 +114,28 @@ General agent interaction.
 ```
 
 ### POST /voice-note
-Process voice journal transcripts.
+Process voice transcriptions with Obsidian logging and Telegram notifications.
+
+**Flow:**
+1. Pulls Obsidian vault from GitHub
+2. Appends transcript to daily note (`voice-notes/YYYY-MM-DD.md`)
+3. Commits and pushes to GitHub
+4. Runs agent to analyze for actionable items
+5. Sends Telegram message with summary and suggested actions
 
 ```json
 {
   "transcript": "I need to call mom tomorrow and finish the report by Friday",
-  "timestamp": "2024-01-15T10:30:00Z"
+  "timestamp": "10:30 AM"
+}
+```
+
+**Response:**
+```json
+{
+  "result": "Agent's analysis and suggestions",
+  "sessionId": "...",
+  "logged": true
 }
 ```
 
