@@ -8,14 +8,21 @@ import { sendTelegramMessage } from "./telegram.js";
 export async function createApiServer() {
   const server = Fastify({ logger: true });
 
-  // Bearer token auth
-  await server.register(bearerAuth, {
-    keys: new Set([env.apiBearerToken]),
+  // Health check (no auth required)
+  server.get("/health", async () => {
+    return { status: "ok" };
   });
 
-  // Health check (no auth required)
-  server.get("/health", { config: { rawBody: true } }, async () => {
-    return { status: "ok" };
+  // Bearer token auth for all other routes
+  await server.register(bearerAuth, {
+    keys: new Set([env.apiBearerToken]),
+    addHook: false,
+  });
+
+  // Apply auth to all routes except health
+  server.addHook("onRequest", async (request, reply) => {
+    if (request.url === "/health") return;
+    await (server as any).verifyBearerAuth(request, reply);
   });
 
   // Main agent endpoint
