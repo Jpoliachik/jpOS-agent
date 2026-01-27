@@ -13,16 +13,14 @@ export async function createApiServer() {
     return { status: "ok" };
   });
 
-  // Bearer token auth for all other routes
+  // Bearer token auth - skip for health endpoint
   await server.register(bearerAuth, {
     keys: new Set([env.apiBearerToken]),
-    addHook: false,
-  });
-
-  // Apply auth to all routes except health
-  server.addHook("onRequest", async (request, reply) => {
-    if (request.url === "/health") return;
-    await (server as any).verifyBearerAuth(request, reply);
+    auth: (key, req) => {
+      // Skip auth for health endpoint
+      if (req.url === "/health") return true;
+      return env.apiBearerToken === key;
+    },
   });
 
   // Main agent endpoint
