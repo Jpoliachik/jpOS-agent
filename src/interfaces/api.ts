@@ -54,9 +54,15 @@ Format:
   cd ${vaultPath} && git add active-projects.md && git commit -m "Update active projects" && git push
 - If the file doesn't exist yet, create it when you first need to add a project.
 
+## IMPORTANT: Verify your actions
+- NEVER claim you completed an action unless you actually called the tool AND received a successful response
+- If a tool call fails or you cannot execute it, say so explicitly (e.g. "Tried to create a Todoist task but it failed: <reason>")
+- Only report actions as done if you have confirmation from the tool response
+
 ## Response
 After taking all actions, respond with a concise Telegram summary (2-4 sentences max):
 - List what actions you took (e.g. "Added Todoist task: X (due tomorrow)", "Filed issue #N on repo/name")
+- If any action failed, say so clearly
 - Briefly acknowledge any non-actionable content (reflections, journal entries)
 - Friendly, casual tone`;
 

@@ -25,7 +25,13 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   for await (const message of query({
     prompt: fullPrompt,
     options: {
-      allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
+      allowedTools: [
+        "Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch",
+        "mcp__todoist__todoist_create_task",
+        "mcp__todoist__todoist_list_tasks",
+        "mcp__todoist__todoist_complete_task",
+        "mcp__todoist__todoist_list_projects",
+      ],
       permissionMode: "acceptEdits",
       settingSources: ["project"],
       cwd: process.env.AGENT_CWD || "/app",
@@ -52,16 +58,27 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       setSession(externalId, sessionId);
     }
 
-    // Print human-readable output (for debugging)
+    // Log tool usage for debugging
     if (message.type === "assistant" && message.message?.content) {
       for (const block of message.message.content) {
         if ("text" in block) {
           result = block.text as string;
         }
+        if ("type" in block && block.type === "tool_use") {
+          const toolBlock = block as { name?: string; input?: unknown };
+          console.log(`Tool call: ${toolBlock.name}`, JSON.stringify(toolBlock.input).slice(0, 200));
+        }
       }
     }
 
-    // Capture final result
+    // Log tool progress/errors
+    if (message.type === "tool_progress") {
+      const msg = message as { tool_name?: string; data?: string };
+      if (msg.tool_name) {
+        console.log(`Tool progress (${msg.tool_name}):`, (msg.data || "").slice(0, 200));
+      }
+    }
+
     if (message.type === "result") {
       console.log(`Done: ${message.subtype}`);
     }
