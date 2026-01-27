@@ -52,8 +52,14 @@ async function ensureSshConfigured(): Promise<void> {
   sshConfigured = true;
 }
 
+async function configureGit(): Promise<void> {
+  await execAsync(`git config --global user.email "jpos-agent@fly.dev"`);
+  await execAsync(`git config --global user.name "jpOS Agent"`);
+}
+
 export async function ensureVaultReady(): Promise<void> {
   await ensureSshConfigured();
+  await configureGit();
   if (!existsSync(VAULT_PATH)) {
     console.log("Cloning Obsidian vault...");
     await execAsync(`git clone ${getObsidianRepoUrl()} ${VAULT_PATH}`);

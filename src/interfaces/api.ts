@@ -13,73 +13,69 @@ export async function createApiServer() {
     return { status: "ok" };
   });
 
-  // Bearer token auth - skip for health endpoint
-  await server.register(bearerAuth, {
-    keys: new Set([env.apiBearerToken]),
-    auth: (key, req) => {
-      // Skip auth for health endpoint
-      if (req.url === "/health") return true;
-      return env.apiBearerToken === key;
-    },
-  });
+  // Register authenticated routes in a separate scope
+  await server.register(async (app) => {
+    await app.register(bearerAuth, {
+      keys: new Set([env.apiBearerToken]),
+    });
 
-  // Main agent endpoint
-  server.post<{
-    Body: {
-      prompt: string;
-      clientId?: string;
-      context?: string;
-    };
-  }>("/agent", async (request, reply) => {
-    const { prompt, clientId, context } = request.body;
-
-    if (!prompt) {
-      return reply.status(400).send({ error: "prompt is required" });
-    }
-
-    const externalId = `api:${clientId || "default"}`;
-
-    try {
-      const response = await runAgent({
-        prompt,
-        externalId,
-        systemContext: context,
-      });
-
-      return {
-        result: response.result,
-        sessionId: response.sessionId,
+    // Main agent endpoint
+    app.post<{
+      Body: {
+        prompt: string;
+        clientId?: string;
+        context?: string;
       };
-    } catch (error) {
-      console.error("Agent error:", error);
-      return reply.status(500).send({
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  });
+    }>("/agent", async (request, reply) => {
+      const { prompt, clientId, context } = request.body;
 
-  // Voice note processing endpoint
-  server.post<{
-    Body: {
-      transcript: string;
-      timestamp?: string;
-    };
-  }>("/voice-note", async (request, reply) => {
-    const { transcript, timestamp } = request.body;
+      if (!prompt) {
+        return reply.status(400).send({ error: "prompt is required" });
+      }
 
-    if (!transcript) {
-      return reply.status(400).send({ error: "transcript is required" });
-    }
+      const externalId = `api:${clientId || "default"}`;
 
-    try {
-      // 1. Log to Obsidian vault
-      const filePath = await appendVoiceNote({ transcript, timestamp });
-      const dateStr = new Date().toISOString().split("T")[0];
-      await commitAndPush(`Voice note ${dateStr}`);
-      console.log(`Voice note saved to ${filePath}`);
+      try {
+        const response = await runAgent({
+          prompt,
+          externalId,
+          systemContext: context,
+        });
 
-      // 2. Run agent to analyze and suggest actions
-      const context = `You received a voice note transcription that has been logged to Obsidian.
+        return {
+          result: response.result,
+          sessionId: response.sessionId,
+        };
+      } catch (error) {
+        console.error("Agent error:", error);
+        return reply.status(500).send({
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    // Voice note processing endpoint
+    app.post<{
+      Body: {
+        transcript: string;
+        timestamp?: string;
+      };
+    }>("/voice-note", async (request, reply) => {
+      const { transcript, timestamp } = request.body;
+
+      if (!transcript) {
+        return reply.status(400).send({ error: "transcript is required" });
+      }
+
+      try {
+        // 1. Log to Obsidian vault
+        const filePath = await appendVoiceNote({ transcript, timestamp });
+        const dateStr = new Date().toISOString().split("T")[0];
+        await commitAndPush(`Voice note ${dateStr}`);
+        console.log(`Voice note saved to ${filePath}`);
+
+        // 2. Run agent to analyze and suggest actions
+        const context = `You received a voice note transcription that has been logged to Obsidian.
 
 Analyze this transcript and respond with a brief summary for Telegram:
 - If there are actionable items (todos, tasks, reminders), list them and ask if I want to add them to Todoist
@@ -88,31 +84,32 @@ Analyze this transcript and respond with a brief summary for Telegram:
 
 Keep the response concise (2-4 sentences max). Use a friendly, casual tone.`;
 
-      const response = await runAgent({
-        prompt: transcript,
-        externalId: "api:voice-notes",
-        systemContext: context,
-      });
+        const response = await runAgent({
+          prompt: transcript,
+          externalId: "api:voice-notes",
+          systemContext: context,
+        });
 
-      // 3. Send Telegram notification
-      const telegramMessage = response.result || "Voice note logged.";
-      await sendTelegramMessage(telegramMessage);
+        // 3. Send Telegram notification
+        const telegramMessage = response.result || "Voice note logged.";
+        await sendTelegramMessage(telegramMessage);
 
-      return {
-        result: response.result,
-        sessionId: response.sessionId,
-        logged: true,
-      };
-    } catch (error) {
-      console.error("Voice note error:", error);
+        return {
+          result: response.result,
+          sessionId: response.sessionId,
+          logged: true,
+        };
+      } catch (error) {
+        console.error("Voice note error:", error);
 
-      // Still try to notify via Telegram about the error
-      await sendTelegramMessage(`Voice note processing failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+        // Still try to notify via Telegram about the error
+        await sendTelegramMessage(`Voice note processing failed: ${error instanceof Error ? error.message : "Unknown error"}`);
 
-      return reply.status(500).send({
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
+        return reply.status(500).send({
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
   });
 
   return server;
