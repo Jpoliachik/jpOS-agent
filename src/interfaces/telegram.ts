@@ -1,10 +1,13 @@
 import { Bot, Context } from "grammy";
 import { env } from "../config.js";
-import { runAgent } from "../agent.js";
+import { runAgent, ProgressEvent } from "../agent.js";
 import { clearSession } from "../sessions.js";
 import { readContextFiles, readVaultGuide, VAULT_PATH } from "../obsidian.js";
 
 let botInstance: Bot | null = null;
+
+const AGENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const STATUS_THROTTLE_MS = 15_000; // min 15s between status updates
 
 function buildTelegramSystemContext(): string {
   const contextFiles = readContextFiles();
@@ -76,8 +79,26 @@ export function createTelegramBot(): Bot {
     const externalId = `telegram:${ctx.from!.id}`;
     const userMessage = ctx.message.text;
 
-    // Send typing indicator
-    await ctx.replyWithChatAction("typing");
+    // Send immediate acknowledgment
+    await ctx.reply("On it.");
+
+    // Keep typing indicator alive throughout processing
+    const typingInterval = setInterval(() => {
+      ctx.replyWithChatAction("typing").catch(() => {});
+    }, 4000);
+
+    // Throttled progress updates
+    let lastStatusTime = 0;
+
+    const onProgress = (event: ProgressEvent) => {
+      if (event.type === "tool_call") {
+        const now = Date.now();
+        if (now - lastStatusTime >= STATUS_THROTTLE_MS) {
+          lastStatusTime = now;
+          ctx.reply(`Still working — ${event.message.toLowerCase()}...`).catch(() => {});
+        }
+      }
+    };
 
     try {
       const systemContext = buildTelegramSystemContext();
@@ -86,16 +107,31 @@ export function createTelegramBot(): Bot {
         prompt: userMessage,
         externalId,
         systemContext,
+        onProgress,
+        timeoutMs: AGENT_TIMEOUT_MS,
       });
+
+      clearInterval(typingInterval);
 
       await ctx.reply(response.result || "Done.", {
         parse_mode: "Markdown",
       });
     } catch (error) {
+      clearInterval(typingInterval);
       console.error("Agent error:", error);
-      await ctx.reply(
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      if (msg.includes("SIGKILL")) {
+        await ctx.reply(
+          "The agent process was killed (likely out of memory). Try a simpler request or /new to start fresh."
+        );
+      } else if (msg.includes("timed out")) {
+        await ctx.reply(
+          "Request timed out. Try breaking it into smaller tasks."
+        );
+      } else {
+        await ctx.reply(`Error: ${msg}`);
+      }
     }
   });
 
