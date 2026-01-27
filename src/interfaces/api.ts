@@ -57,19 +57,30 @@ export async function createApiServer() {
     // Voice note processing endpoint
     app.post<{
       Body: {
+        id: string;
+        createdAt: string;
+        duration: number;
         transcript: string;
-        timestamp?: string;
       };
     }>("/voice-note", async (request, reply) => {
-      const { transcript, timestamp } = request.body;
+      const { id, createdAt, duration, transcript } = request.body;
 
       if (!transcript) {
         return reply.status(400).send({ error: "transcript is required" });
       }
 
+      // Format timestamp from createdAt
+      const timestamp = createdAt
+        ? new Date(createdAt).toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          })
+        : undefined;
+
       try {
         // 1. Log to Obsidian vault
-        const filePath = await appendVoiceNote({ transcript, timestamp });
+        const filePath = await appendVoiceNote({ transcript, timestamp, duration, id });
         const dateStr = new Date().toISOString().split("T")[0];
         await commitAndPush(`Voice note ${dateStr}`);
         console.log(`Voice note saved to ${filePath}`);

@@ -91,10 +91,18 @@ function getTimeString(): string {
 interface AppendVoiceNoteParams {
   transcript: string;
   timestamp?: string;
+  duration?: number;
+  id?: string;
+}
+
+function formatDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
 
 export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<string> {
-  const { transcript, timestamp } = params;
+  const { transcript, timestamp, duration, id } = params;
 
   await ensureVaultReady();
 
@@ -112,8 +120,12 @@ export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<st
     writeFileSync(filePath, `# Voice Notes - ${dateStr}\n\n`);
   }
 
-  // Append the transcript
-  const entry = `## ${timeStr}\n\n${transcript}\n\n---\n\n`;
+  // Build entry with optional metadata
+  let entry = `## ${timeStr}`;
+  if (duration) {
+    entry += ` (${formatDuration(duration)})`;
+  }
+  entry += `\n\n${transcript}\n\n---\n\n`;
   appendFileSync(filePath, entry);
 
   return filePath;
