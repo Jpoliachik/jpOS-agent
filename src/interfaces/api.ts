@@ -5,6 +5,26 @@ import { runAgent } from "../agent.js";
 import { appendVoiceNote, commitAndPush } from "../obsidian.js";
 import { sendTelegramMessage } from "./telegram.js";
 
+async function processVoiceNoteAsync(transcript: string): Promise<void> {
+  const context = `You received a voice note transcription that has been logged to Obsidian.
+
+Analyze this transcript and respond with a brief summary for Telegram:
+- If there are actionable items (todos, tasks, reminders), list them and ask if I want to add them to Todoist
+- If there are ideas for GitHub issues or projects, mention them
+- If it's just a reflection or journal entry with no actions, give a brief acknowledgment
+
+Keep the response concise (2-4 sentences max). Use a friendly, casual tone.`;
+
+  const response = await runAgent({
+    prompt: transcript,
+    externalId: "api:voice-notes",
+    systemContext: context,
+  });
+
+  const telegramMessage = response.result || "Voice note logged.";
+  await sendTelegramMessage(telegramMessage);
+}
+
 export async function createApiServer() {
   const server = Fastify({ logger: true });
 
@@ -94,29 +114,12 @@ export async function createApiServer() {
         await commitAndPush(`Voice note ${dateStr}`);
         console.log(`Voice note saved to ${filePath}`);
 
-        // 2. Run agent to analyze and suggest actions
-        const context = `You received a voice note transcription that has been logged to Obsidian.
-
-Analyze this transcript and respond with a brief summary for Telegram:
-- If there are actionable items (todos, tasks, reminders), list them and ask if I want to add them to Todoist
-- If there are ideas for GitHub issues or projects, mention them
-- If it's just a reflection or journal entry with no actions, give a brief acknowledgment
-
-Keep the response concise (2-4 sentences max). Use a friendly, casual tone.`;
-
-        const response = await runAgent({
-          prompt: transcript,
-          externalId: "api:voice-notes",
-          systemContext: context,
+        // 2. Process with LLM async (don't block response)
+        processVoiceNoteAsync(transcript).catch((err) => {
+          console.error("Async voice note processing failed:", err);
         });
 
-        // 3. Send Telegram notification
-        const telegramMessage = response.result || "Voice note logged.";
-        await sendTelegramMessage(telegramMessage);
-
         return {
-          result: response.result,
-          sessionId: response.sessionId,
           logged: true,
         };
       } catch (error) {
