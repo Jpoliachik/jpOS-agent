@@ -5,7 +5,7 @@
 
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -18,7 +18,7 @@ function getObsidianRepoUrl(): string {
   }
   return "git@github.com:Jpoliachik/obsidian.git";
 }
-const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || "/data/obsidian-vault";
+export const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || "/data/obsidian-vault";
 const VOICE_NOTES_DIR = "voice-notes";
 
 // Hardcoded timezone for date/time conversion
@@ -153,6 +153,39 @@ export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<Ap
   appendFileSync(filePath, entry);
 
   return { filePath, isDuplicate: false };
+}
+
+export function readVaultGuide(): string | null {
+  const guidePath = join(VAULT_PATH, "context", "vault-guide.md");
+  try {
+    return readFileSync(guidePath, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+export function readContextFiles(): string {
+  const contextDir = join(VAULT_PATH, "context");
+  if (!existsSync(contextDir)) {
+    return "";
+  }
+
+  const files = readdirSync(contextDir).filter((f) => f.endsWith(".md"));
+  if (files.length === 0) {
+    return "";
+  }
+
+  const sections: string[] = [];
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(contextDir, file), "utf-8");
+      sections.push(`### ${file}\n${content}`);
+    } catch {
+      // Skip files that can't be read
+    }
+  }
+
+  return sections.join("\n\n");
 }
 
 export async function commitAndPush(message: string): Promise<void> {
