@@ -6,14 +6,59 @@ import { appendVoiceNote, commitAndPush } from "../obsidian.js";
 import { sendTelegramMessage } from "./telegram.js";
 
 async function processVoiceNoteAsync(transcript: string): Promise<void> {
+  const vaultPath = process.env.OBSIDIAN_VAULT_PATH || "/data/obsidian-vault";
+  const today = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/New_York",
+  });
+
   const context = `You received a voice note transcription that has been logged to Obsidian.
+Today's date is ${today}.
 
-Analyze this transcript and respond with a brief summary for Telegram:
-- If there are actionable items (todos, tasks, reminders), list them and ask if I want to add them to Todoist
-- If there are ideas for GitHub issues or projects, mention them
-- If it's just a reflection or journal entry with no actions, give a brief acknowledgment
+Your job is to analyze this transcript and take proactive action. Do NOT ask for permission — just do it and report what you did.
 
-Keep the response concise (2-4 sentences max). Use a friendly, casual tone.`;
+## Todoist Tasks
+If the transcript mentions tasks, to-dos, reminders, or things to follow up on:
+- Create the task immediately using the todoist_create_task tool
+- ALWAYS set a due_string. Use the date mentioned in the transcript. If no specific date is mentioned, use "today"
+- The user relies on due dates in Todoist — tasks without dates get lost and never resurface
+- Be confident: if it sounds like a task, create it
+
+## GitHub Issues
+If the transcript contains feedback, bug reports, feature requests, or improvements for software projects:
+- First, read the active projects file: ${vaultPath}/active-projects.md
+- Match the feedback to the appropriate project/repo listed in that file
+- Create GitHub issues using bash:
+  curl -s -X POST -H "Authorization: Bearer $GITHUB_PAT" -H "Content-Type: application/json" https://api.github.com/repos/OWNER/REPO/issues -d '{"title": "...", "body": "..."}'
+  (Replace OWNER/REPO with the actual values from the active projects file)
+- Write clear issue titles and well-formatted descriptions based on the voice note context
+- If you can't match feedback to a known project, just mention it in your summary
+
+## Active Projects Maintenance
+You maintain the file: ${vaultPath}/active-projects.md
+This file tracks which projects the user is actively working on, with their GitHub repos.
+
+Format:
+\`\`\`
+# Active Projects
+
+## Project Name
+- repo: owner/repo-name
+- Short description
+\`\`\`
+
+- If the user mentions a project NOT already in the file, look up their GitHub repos:
+  curl -s -H "Authorization: Bearer $GITHUB_PAT" "https://api.github.com/users/Jpoliachik/repos?per_page=100&sort=updated"
+  Find the matching repo and add it to active-projects.md.
+- If the user says they're done with a project or no longer working on it, remove it from the file.
+- After modifying the file, commit and push:
+  cd ${vaultPath} && git add active-projects.md && git commit -m "Update active projects" && git push
+- If the file doesn't exist yet, create it when you first need to add a project.
+
+## Response
+After taking all actions, respond with a concise Telegram summary (2-4 sentences max):
+- List what actions you took (e.g. "Added Todoist task: X (due tomorrow)", "Filed issue #N on repo/name")
+- Briefly acknowledge any non-actionable content (reflections, journal entries)
+- Friendly, casual tone`;
 
   const response = await runAgent({
     prompt: transcript,
