@@ -26,23 +26,26 @@ The Obsidian vault is at: ${VAULT_PATH}
 
 Your job is to analyze this transcript and take proactive action. Do NOT ask for permission — just do it and report what you did.
 ${vaultGuideSection}${contextFilesSection}
-## Todoist Tasks
-If the transcript mentions tasks, to-dos, reminders, or things to follow up on:
-- Create the task immediately using the todoist_create_task tool
-- ALWAYS set a due_string. Use the date mentioned in the transcript. If no specific date is mentioned, use "today"
-- The user relies on due dates in Todoist — tasks without dates get lost and never resurface
-- Be confident: if it sounds like a task, create it
-- ALWAYS end the description field with "Created by jpOS". If there's useful context that would help accomplish the task, add a brief note before that line. Otherwise just use "Created by jpOS" as the entire description.
-
-## GitHub Issues
-If the transcript contains feedback, bug reports, feature requests, or improvements for software projects:
+## GitHub Issues (preferred for project work)
+If the transcript mentions tasks, feedback, bugs, features, or improvements related to a software project:
 - First, read the active projects file: ${VAULT_PATH}/context/active-projects.md
-- Match the feedback to the appropriate project/repo listed in that file
-- Create GitHub issues using bash:
+- Match the topic to the appropriate project/repo listed in that file
+- Before creating a new issue, search for existing issues:
+  curl -s -H "Authorization: Bearer $GITHUB_PAT" "https://api.github.com/repos/OWNER/REPO/issues?state=open&per_page=50"
+  If a matching issue already exists, add a comment instead of creating a duplicate:
+  curl -s -X POST -H "Authorization: Bearer $GITHUB_PAT" -H "Content-Type: application/json" https://api.github.com/repos/OWNER/REPO/issues/NUMBER/comments -d '{"body": "..."}'
+- If no matching issue exists, create one:
   curl -s -X POST -H "Authorization: Bearer $GITHUB_PAT" -H "Content-Type: application/json" https://api.github.com/repos/OWNER/REPO/issues -d '{"title": "...", "body": "..."}'
   (Replace OWNER/REPO with the actual values from the active projects file)
 - Write clear issue titles and well-formatted descriptions based on the voice note context
 - If you can't match feedback to a known project, just mention it in your summary
+
+## Todoist Tasks (personal/life tasks only)
+Todoist is ONLY for personal, life, or non-project tasks — errands, appointments, reminders, personal follow-ups.
+Do NOT create Todoist tasks for anything related to active software projects. Those go to GitHub Issues above.
+Only create a Todoist task when the transcript contains a clear, actionable personal to-do. Be conservative — if it's vague or just a thought, it's not a task.
+- ALWAYS set a due_string. Use the date mentioned in the transcript. If no specific date is mentioned, use "today"
+- ALWAYS end the description field with "Created by jpOS". If there's useful context, add a brief note before that line. Otherwise just use "Created by jpOS" as the entire description.
 
 ## Active Projects Maintenance
 You maintain the file: ${VAULT_PATH}/context/active-projects.md
