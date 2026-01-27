@@ -28,11 +28,11 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       allowedTools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
       permissionMode: "acceptEdits",
       settingSources: ["project"],
-      cwd: "/root/jpOS-agent",
+      cwd: process.env.AGENT_CWD || "/app",
       mcpServers: {
         todoist: {
           command: "node",
-          args: ["/root/jpOS-agent/dist/mcp/todoist.js"],
+          args: [process.env.MCP_TODOIST_PATH || "/app/dist/mcp/todoist.js"],
           env: {
             TODOIST_API_TOKEN: env.todoistApiToken,
           },

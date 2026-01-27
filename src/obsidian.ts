@@ -5,16 +5,49 @@
 
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, mkdirSync, appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, appendFileSync, writeFileSync, chmodSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 
 const execAsync = promisify(exec);
 
 const OBSIDIAN_REPO = "git@github.com:Jpoliachik/obsidian.git";
-const VAULT_PATH = "/root/obsidian-vault";
+const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || "/data/obsidian-vault";
 const VOICE_NOTES_DIR = "voice-notes";
 
+let sshConfigured = false;
+
+async function ensureSshConfigured(): Promise<void> {
+  if (sshConfigured) return;
+
+  const sshKey = process.env.SSH_PRIVATE_KEY;
+  if (!sshKey) {
+    sshConfigured = true;
+    return;
+  }
+
+  console.log("Configuring SSH key from environment...");
+  const sshDir = join(homedir(), ".ssh");
+  const keyPath = join(sshDir, "id_ed25519");
+
+  if (!existsSync(sshDir)) {
+    mkdirSync(sshDir, { mode: 0o700 });
+  }
+
+  // Decode base64 key and write
+  const decodedKey = Buffer.from(sshKey, "base64").toString("utf-8");
+  writeFileSync(keyPath, decodedKey, { mode: 0o600 });
+
+  // Add GitHub to known hosts
+  const knownHostsPath = join(sshDir, "known_hosts");
+  await execAsync(`ssh-keyscan github.com >> ${knownHostsPath}`);
+
+  console.log("SSH key configured");
+  sshConfigured = true;
+}
+
 export async function ensureVaultReady(): Promise<void> {
+  await ensureSshConfigured();
   if (!existsSync(VAULT_PATH)) {
     console.log("Cloning Obsidian vault...");
     await execAsync(`git clone ${OBSIDIAN_REPO} ${VAULT_PATH}`);

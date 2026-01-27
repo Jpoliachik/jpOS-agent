@@ -1,6 +1,6 @@
 # jpOS Agent
 
-Personal AI agent running on Digital Ocean with Telegram chat and HTTP API interfaces.
+Personal AI agent with Telegram chat and HTTP API interfaces. Deployable to Fly.io or Digital Ocean.
 
 ## Prerequisites
 
@@ -21,7 +21,79 @@ Personal AI agent running on Digital Ocean with Telegram chat and HTTP API inter
 openssl rand -hex 32
 ```
 
-## Digital Ocean Droplet Setup
+## Fly.io Setup (Recommended)
+
+Fly.io provides automatic HTTPS and easy deployments.
+
+### 1. Install Fly CLI
+
+```bash
+# macOS
+brew install flyctl
+
+# Or via script
+curl -L https://fly.io/install.sh | sh
+```
+
+### 2. Login and Create App
+
+```bash
+fly auth login
+fly apps create jpos-agent
+```
+
+### 3. Create Persistent Volume
+
+```bash
+fly volumes create jpos_data --region ord --size 1
+```
+
+### 4. Set Secrets
+
+```bash
+fly secrets set \
+  ANTHROPIC_API_KEY="your-key" \
+  TELEGRAM_BOT_TOKEN="your-token" \
+  ALLOWED_TELEGRAM_USER_ID="your-user-id" \
+  API_BEARER_TOKEN="your-api-token" \
+  TODOIST_API_TOKEN="your-todoist-token"
+```
+
+### 5. Set Up SSH Key for Obsidian Vault
+
+Generate a deploy key and add it to your Obsidian GitHub repo:
+
+```bash
+# Generate key locally
+ssh-keygen -t ed25519 -f ~/.ssh/jpos-obsidian -C "jpos-obsidian" -N ""
+
+# Add public key to GitHub repo as deploy key (with write access)
+cat ~/.ssh/jpos-obsidian.pub
+
+# Set private key as Fly secret (base64 encoded)
+fly secrets set SSH_PRIVATE_KEY="$(cat ~/.ssh/jpos-obsidian | base64)"
+```
+
+### 6. Deploy
+
+```bash
+fly deploy
+```
+
+Your app is now live at `https://jpos-agent.fly.dev`
+
+### Fly.io Commands
+
+```bash
+fly status              # App status
+fly logs                # View logs
+fly ssh console         # SSH into container
+fly deploy              # Deploy changes
+```
+
+---
+
+## Digital Ocean Droplet Setup (Alternative)
 
 Run these commands on a fresh Ubuntu droplet:
 
