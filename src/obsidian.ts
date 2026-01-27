@@ -5,13 +5,19 @@
 
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, mkdirSync, appendFileSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
 const execAsync = promisify(exec);
 
-const OBSIDIAN_REPO = "git@github.com:Jpoliachik/obsidian.git";
+function getObsidianRepoUrl(): string {
+  const token = process.env.GITHUB_PAT;
+  if (token) {
+    return `https://${token}@github.com/Jpoliachik/obsidian.git`;
+  }
+  return "git@github.com:Jpoliachik/obsidian.git";
+}
 const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || "/data/obsidian-vault";
 const VOICE_NOTES_DIR = "voice-notes";
 
@@ -50,7 +56,7 @@ export async function ensureVaultReady(): Promise<void> {
   await ensureSshConfigured();
   if (!existsSync(VAULT_PATH)) {
     console.log("Cloning Obsidian vault...");
-    await execAsync(`git clone ${OBSIDIAN_REPO} ${VAULT_PATH}`);
+    await execAsync(`git clone ${getObsidianRepoUrl()} ${VAULT_PATH}`);
     console.log("Vault cloned successfully");
   } else {
     await pullVault();
