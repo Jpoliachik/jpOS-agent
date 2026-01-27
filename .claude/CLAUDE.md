@@ -1,12 +1,12 @@
 # jpOS Agent
 
-Personal AI agent running on Digital Ocean with Telegram and HTTP API interfaces.
+Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 
 ## Claude Agent SDK Notes
 
 - **Always use `permissionMode: "acceptEdits"`** - Using `"bypassPermissions"` causes the SDK to fail with "Claude Code process exited with code 1"
 - The SDK requires Claude Code CLI installed on the host machine
-- MCP server paths should be absolute (e.g., `/root/jpOS-agent/dist/mcp/todoist.js`)
+- MCP server paths should be absolute (e.g., `/app/dist/mcp/todoist.js`)
 
 ## Architecture
 
@@ -22,7 +22,7 @@ Personal AI agent running on Digital Ocean with Telegram and HTTP API interfaces
 Webhook for voice transcription apps. Logs to Obsidian vault, analyzes for actions, sends Telegram notification.
 
 ```
-POST /voice-note
+POST https://jpos-agent.fly.dev/voice-note
 Authorization: Bearer <API_BEARER_TOKEN>
 Content-Type: application/json
 
@@ -40,13 +40,13 @@ Health check (no auth).
 
 ## Deployment
 
-- Hosted on Digital Ocean droplet
+- Hosted on Fly.io at `https://jpos-agent.fly.dev`
 - Auto-deploys via GitHub Actions on push to main
-- Uses PM2 for process management
+- Persistent volume at `/data` for Obsidian vault
 
 ## Obsidian Vault
 
-- Repo: `git@github.com:Jpoliachik/obsidian.git`
-- Cloned to `/root/obsidian-vault` on the server
+- Repo: `github.com/Jpoliachik/obsidian`
+- Cloned to `/data/obsidian-vault` on the container
 - Voice notes saved to `voice-notes/YYYY-MM-DD.md`
-- Requires SSH key on server for push access
+- Uses GitHub PAT (GITHUB_PAT secret) for push access

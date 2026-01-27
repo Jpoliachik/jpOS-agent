@@ -1,4 +1,4 @@
-name: Deploy to Digital Ocean
+name: Deploy to Fly.io
 
 on:
   push:
@@ -8,16 +8,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DROPLET_HOST }}
-          username: ${{ secrets.DROPLET_USER }}
-          key: ${{ secrets.DROPLET_SSH_KEY }}
-          script: |
-            set -e
-            cd ~/jpOS-agent
-            git pull origin main
-            npm install --production=false
-            npm run build
-            pm2 restart jpos-agent || pm2 start dist/index.js --name jpos-agent
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

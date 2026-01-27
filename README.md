@@ -1,6 +1,6 @@
 # jpOS Agent
 
-Personal AI agent with Telegram chat and HTTP API interfaces. Deployable to Fly.io or Digital Ocean.
+Personal AI agent with Telegram chat and HTTP API interfaces. Hosted on Fly.io.
 
 ## Prerequisites
 
@@ -21,9 +21,7 @@ Personal AI agent with Telegram chat and HTTP API interfaces. Deployable to Fly.
 openssl rand -hex 32
 ```
 
-## Fly.io Setup (Recommended)
-
-Fly.io provides automatic HTTPS and easy deployments.
+## Fly.io Setup
 
 ### 1. Install Fly CLI
 
@@ -59,19 +57,14 @@ fly secrets set \
   TODOIST_API_TOKEN="your-todoist-token"
 ```
 
-### 5. Set Up SSH Key for Obsidian Vault
+### 5. GitHub PAT for Obsidian Vault
 
-Generate a deploy key and add it to your Obsidian GitHub repo:
+Create a fine-grained PAT at https://github.com/settings/personal-access-tokens/new:
+- Repository access: Select your Obsidian repo
+- Permissions: Contents → Read and write
 
 ```bash
-# Generate key locally
-ssh-keygen -t ed25519 -f ~/.ssh/jpos-obsidian -C "jpos-obsidian" -N ""
-
-# Add public key to GitHub repo as deploy key (with write access)
-cat ~/.ssh/jpos-obsidian.pub
-
-# Set private key as Fly secret (base64 encoded)
-fly secrets set SSH_PRIVATE_KEY="$(cat ~/.ssh/jpos-obsidian | base64)"
+fly secrets set GITHUB_PAT="github_pat_..."
 ```
 
 ### 6. Deploy
@@ -82,81 +75,28 @@ fly deploy
 
 Your app is now live at `https://jpos-agent.fly.dev`
 
-### Fly.io Commands
+## GitHub Actions Auto-Deploy
+
+### 1. Create Fly API Token
+
+```bash
+fly tokens create deploy -x 999999h
+```
+
+### 2. Add to GitHub Secrets
+
+Go to GitHub repo → Settings → Secrets → Actions, add:
+- `FLY_API_TOKEN` - The token from step 1
+
+Now every push to `main` auto-deploys.
+
+## Fly.io Commands
 
 ```bash
 fly status              # App status
 fly logs                # View logs
 fly ssh console         # SSH into container
 fly deploy              # Deploy changes
-```
-
----
-
-## Digital Ocean Droplet Setup (Alternative)
-
-Run these commands on a fresh Ubuntu droplet:
-
-```bash
-# Install Node.js 20
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt-get install -y nodejs
-
-# Install PM2 (process manager)
-npm install -g pm2
-
-# Install Claude Code CLI (required runtime for Agent SDK)
-curl -fsSL https://claude.ai/install.sh | bash
-
-# Clone the repo
-git clone git@github.com:Jpoliachik/jpOS-agent.git ~/jpOS
-cd ~/jpOS
-
-# Configure environment
-cp .env.example .env
-nano .env  # Add your secrets
-
-# Install dependencies and build
-npm install
-npm run build
-
-# Start with PM2
-pm2 start dist/index.js --name jpos-agent
-pm2 save
-pm2 startup  # Follow the printed instructions to enable auto-start on reboot
-```
-
-## GitHub Actions Auto-Deploy
-
-### 1. Create a deploy SSH key (on your local machine)
-
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/jpos-deploy -C "jpos-deploy"
-```
-
-### 2. Add public key to droplet
-
-```bash
-ssh root@YOUR_DROPLET_IP "echo '$(cat ~/.ssh/jpos-deploy.pub)' >> ~/.ssh/authorized_keys"
-```
-
-### 3. Add GitHub Secrets
-
-Go to GitHub repo → Settings → Secrets → Actions, add:
-
-- `DROPLET_HOST` - Your droplet's IP address
-- `DROPLET_USER` - `root` (or your username)
-- `DROPLET_SSH_KEY` - Contents of `~/.ssh/jpos-deploy` (include BEGIN/END lines)
-
-Now every push to `main` auto-deploys.
-
-## PM2 Commands
-
-```bash
-pm2 status                 # See running apps
-pm2 logs jpos-agent        # View logs
-pm2 restart jpos-agent     # Restart app
-pm2 stop jpos-agent        # Stop app
 ```
 
 ## Local Development
