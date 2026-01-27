@@ -195,3 +195,59 @@ export async function commitAndPush(message: string): Promise<void> {
   await execAsync(`git -C ${VAULT_PATH} push`);
   console.log("Changes pushed successfully");
 }
+
+export interface VaultSyncStatus {
+  hasUncommittedChanges: boolean;
+  hasUnpushedCommits: boolean;
+  isClean: boolean;
+}
+
+export async function getVaultSyncStatus(): Promise<VaultSyncStatus> {
+  const { stdout: porcelain } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`);
+  const hasUncommittedChanges = porcelain.trim().length > 0;
+
+  const { stdout: unpushed } = await execAsync(`git -C ${VAULT_PATH} log @{u}..HEAD --oneline`);
+  const hasUnpushedCommits = unpushed.trim().length > 0;
+
+  return {
+    hasUncommittedChanges,
+    hasUnpushedCommits,
+    isClean: !hasUncommittedChanges && !hasUnpushedCommits,
+  };
+}
+
+export interface VaultPushResult {
+  status: "already_clean" | "pushed" | "failed";
+  actions?: string[];
+  error?: string;
+}
+
+export async function ensureVaultPushed(): Promise<VaultPushResult> {
+  try {
+    const syncStatus = await getVaultSyncStatus();
+
+    if (syncStatus.isClean) {
+      return { status: "already_clean" };
+    }
+
+    const actions: string[] = [];
+
+    if (syncStatus.hasUncommittedChanges) {
+      await execAsync(`git -C ${VAULT_PATH} add -A`);
+      await execAsync(
+        `git -C ${VAULT_PATH} commit -m "Auto-sync: uncommitted changes from agent"`,
+      );
+      actions.push("committed uncommitted changes");
+    }
+
+    await execAsync(`git -C ${VAULT_PATH} push`);
+    actions.push("pushed to remote");
+
+    console.log(`Vault safety net: ${actions.join(", ")}`);
+    return { status: "pushed", actions };
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("Vault safety net failed:", errorMsg);
+    return { status: "failed", error: errorMsg };
+  }
+}

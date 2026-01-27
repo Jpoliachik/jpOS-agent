@@ -2,7 +2,15 @@ import Fastify from "fastify";
 import bearerAuth from "@fastify/bearer-auth";
 import { env } from "../config.js";
 import { runAgent } from "../agent.js";
-import { appendVoiceNote, commitAndPush, readVaultGuide, readContextFiles, VAULT_PATH } from "../obsidian.js";
+import {
+  appendVoiceNote,
+  commitAndPush,
+  readVaultGuide,
+  readContextFiles,
+  ensureVaultPushed,
+  VAULT_PATH,
+} from "../obsidian.js";
+import type { VaultPushResult } from "../obsidian.js";
 import { sendTelegramMessage } from "./telegram.js";
 
 async function processVoiceNoteAsync(transcript: string): Promise<void> {
@@ -103,8 +111,24 @@ After taking all actions, respond with a concise Telegram summary (2-4 sentences
     systemContext: context,
   });
 
-  const telegramMessage = response.result || "Voice note logged.";
+  const pushResult = await ensureVaultPushed();
+  const telegramMessage = buildVoiceNoteTelegramMessage(response.result, pushResult);
   await sendTelegramMessage(telegramMessage);
+}
+
+function buildVoiceNoteTelegramMessage(
+  agentResult: string | undefined,
+  pushResult: VaultPushResult,
+): string {
+  let message = agentResult || "Voice note logged.";
+
+  if (pushResult.status === "pushed") {
+    message += "\n_Vault sync: safety net pushed changes_";
+  } else if (pushResult.status === "failed") {
+    message += `\n_Vault sync failed: ${pushResult.error}_`;
+  }
+
+  return message;
 }
 
 export async function createApiServer() {
@@ -197,8 +221,10 @@ export async function createApiServer() {
         console.log(`Voice note saved to ${filePath}`);
 
         // 2. Process with LLM async (don't block response)
-        processVoiceNoteAsync(transcript).catch((err) => {
+        processVoiceNoteAsync(transcript).catch(async (err) => {
           console.error("Async voice note processing failed:", err);
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          await sendTelegramMessage(`Voice note agent failed: ${errorMsg}`).catch(() => {});
         });
 
         return {
