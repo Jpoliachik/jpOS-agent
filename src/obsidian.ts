@@ -93,6 +93,7 @@ interface AppendVoiceNoteParams {
   timestamp?: string;
   duration?: number;
   id?: string;
+  createdAt?: string;
 }
 
 function formatDuration(seconds: number): string {
@@ -107,7 +108,7 @@ interface AppendVoiceNoteResult {
 }
 
 export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<AppendVoiceNoteResult> {
-  const { transcript, timestamp, duration, id } = params;
+  const { transcript, timestamp, duration, id, createdAt } = params;
 
   await ensureVaultReady();
 
@@ -116,7 +117,9 @@ export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<Ap
     mkdirSync(voiceNotesPath, { recursive: true });
   }
 
-  const dateStr = getDateString();
+  // Use createdAt date if provided, otherwise use today
+  const noteDate = createdAt ? new Date(createdAt) : new Date();
+  const dateStr = noteDate.toISOString().split("T")[0];
   const timeStr = timestamp || getTimeString();
   const filePath = join(voiceNotesPath, `${dateStr}.md`);
 

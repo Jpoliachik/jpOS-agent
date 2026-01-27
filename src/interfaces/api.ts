@@ -100,7 +100,7 @@ export async function createApiServer() {
 
       try {
         // 1. Log to Obsidian vault
-        const { filePath, isDuplicate } = await appendVoiceNote({ transcript, timestamp, duration, id });
+        const { filePath, isDuplicate } = await appendVoiceNote({ transcript, timestamp, duration, id, createdAt });
 
         if (isDuplicate) {
           return {
