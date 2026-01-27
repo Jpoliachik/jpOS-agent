@@ -80,7 +80,16 @@ export async function createApiServer() {
 
       try {
         // 1. Log to Obsidian vault
-        const filePath = await appendVoiceNote({ transcript, timestamp, duration, id });
+        const { filePath, isDuplicate } = await appendVoiceNote({ transcript, timestamp, duration, id });
+
+        if (isDuplicate) {
+          return {
+            result: "Duplicate voice note - already logged",
+            logged: false,
+            duplicate: true,
+          };
+        }
+
         const dateStr = new Date().toISOString().split("T")[0];
         await commitAndPush(`Voice note ${dateStr}`);
         console.log(`Voice note saved to ${filePath}`);

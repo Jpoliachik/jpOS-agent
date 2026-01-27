@@ -5,7 +5,7 @@
 
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, mkdirSync, appendFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -101,7 +101,12 @@ function formatDuration(seconds: number): string {
   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
 
-export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<string> {
+interface AppendVoiceNoteResult {
+  filePath: string;
+  isDuplicate: boolean;
+}
+
+export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<AppendVoiceNoteResult> {
   const { transcript, timestamp, duration, id } = params;
 
   await ensureVaultReady();
@@ -120,15 +125,28 @@ export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<st
     writeFileSync(filePath, `# Voice Notes - ${dateStr}\n\n`);
   }
 
+  // Check for duplicate by ID
+  if (id) {
+    const existingContent = readFileSync(filePath, "utf-8");
+    if (existingContent.includes(`id: ${id}`)) {
+      console.log(`Duplicate voice note detected: ${id}`);
+      return { filePath, isDuplicate: true };
+    }
+  }
+
   // Build entry with optional metadata
   let entry = `## ${timeStr}`;
   if (duration) {
     entry += ` (${formatDuration(duration)})`;
   }
-  entry += `\n\n${transcript}\n\n---\n\n`;
+  entry += `\n`;
+  if (id) {
+    entry += `> id: ${id}\n`;
+  }
+  entry += `\n${transcript}\n\n---\n\n`;
   appendFileSync(filePath, entry);
 
-  return filePath;
+  return { filePath, isDuplicate: false };
 }
 
 export async function commitAndPush(message: string): Promise<void> {
