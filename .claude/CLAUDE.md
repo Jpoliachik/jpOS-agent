@@ -50,3 +50,4 @@ Health check (no auth).
 - Cloned to `/data/obsidian-vault` on the container
 - Voice notes saved to `voice-notes/YYYY-MM-DD.md`
 - Uses GitHub PAT (GITHUB_PAT secret) for push access
+- **Timezone: `America/New_York`** - hardcoded in `src/obsidian.ts` for date/time conversion

@@ -21,6 +21,10 @@ function getObsidianRepoUrl(): string {
 const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || "/data/obsidian-vault";
 const VOICE_NOTES_DIR = "voice-notes";
 
+// Hardcoded timezone for date/time conversion
+// TODO: Make configurable if needed for other timezones
+const TIMEZONE = "America/New_York";
+
 let sshConfigured = false;
 
 async function ensureSshConfigured(): Promise<void> {
@@ -74,14 +78,13 @@ export async function pullVault(): Promise<void> {
   await execAsync(`git -C ${VAULT_PATH} pull --rebase`);
 }
 
-function getDateString(): string {
-  const now = new Date();
-  return now.toISOString().split("T")[0]; // YYYY-MM-DD
+function getDateString(date: Date = new Date()): string {
+  return date.toLocaleDateString("en-CA", { timeZone: TIMEZONE }); // en-CA gives YYYY-MM-DD format
 }
 
-function getTimeString(): string {
-  const now = new Date();
-  return now.toLocaleTimeString("en-US", {
+function getTimeString(date: Date = new Date()): string {
+  return date.toLocaleTimeString("en-US", {
+    timeZone: TIMEZONE,
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
@@ -117,10 +120,10 @@ export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<Ap
     mkdirSync(voiceNotesPath, { recursive: true });
   }
 
-  // Use createdAt date if provided, otherwise use today
+  // Use createdAt date if provided, otherwise use today (in configured timezone)
   const noteDate = createdAt ? new Date(createdAt) : new Date();
-  const dateStr = noteDate.toISOString().split("T")[0];
-  const timeStr = timestamp || getTimeString();
+  const dateStr = getDateString(noteDate);
+  const timeStr = timestamp || getTimeString(noteDate);
   const filePath = join(voiceNotesPath, `${dateStr}.md`);
 
   // Create file with header if it doesn't exist
