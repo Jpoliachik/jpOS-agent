@@ -10,6 +10,11 @@ function requireEnv(name: string): string {
   return value;
 }
 
+// Expose GITHUB_PAT as GITHUB_TOKEN for gh CLI (inherited by child processes)
+if (process.env.GITHUB_PAT) {
+  process.env.GITHUB_TOKEN = process.env.GITHUB_PAT;
+}
+
 export const env = {
   anthropicApiKey: requireEnv("ANTHROPIC_API_KEY"),
   telegramBotToken: requireEnv("TELEGRAM_BOT_TOKEN"),

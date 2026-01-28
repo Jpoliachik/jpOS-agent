@@ -2,37 +2,24 @@ import { Bot, Context } from "grammy";
 import { env } from "../config.js";
 import { runAgent } from "../agent.js";
 import { clearSession } from "../sessions.js";
-import { readContextFiles, readVaultGuide, VAULT_PATH } from "../obsidian.js";
+import { ensureVaultPushed, VAULT_PATH } from "../obsidian.js";
 
 let botInstance: Bot | null = null;
 
 function buildTelegramSystemContext(): string {
-  const contextFiles = readContextFiles();
-  const vaultGuide = readVaultGuide();
-
   const today = new Date().toLocaleDateString("en-CA", {
     timeZone: "America/New_York",
   });
 
-  const contextSection = contextFiles
-    ? `\n## Context Files\nThese files reflect Justin's current state — priorities, people, and goals. Use this awareness in your responses.\n\n${contextFiles}\n`
-    : "";
+  return `CRITICAL: You MUST use tools for every action. NEVER fabricate responses.
 
-  const vaultGuideSection = vaultGuide
-    ? `\n## Vault Conventions\n${vaultGuide}\n`
-    : "";
+Before responding, read these files IN ORDER:
+1. /app/agent-context/SOUL.md — your identity and hard rules
+2. /app/agent-context/INSTRUCTIONS.md — what to do and how
+3. All .md files in ${VAULT_PATH}/context/ — current user context (use Glob then Read)
 
-  return `You are jpOS, Justin's personal AI assistant. Today is ${today}.
-You have access to Justin's Obsidian vault at: ${VAULT_PATH}
-${contextSection}${vaultGuideSection}
-## Updating Context Files
-When you learn new information from the conversation, update the relevant context files:
-- **context/current-focus.md** — Update when priorities shift, new tasks take focus, or something is completed.
-- **context/people.md** — Update when new people are mentioned with context, or relationships/roles change.
-- **context/goals.md** — Update when goals are declared, intentions expressed, goals completed, or direction shifts.
-
-After modifying any vault files, commit and push:
-cd ${VAULT_PATH} && git add -A && git commit -m "Update context" && git push`;
+Today's date: ${today}
+Obsidian vault path: ${VAULT_PATH}`;
 }
 
 export function createTelegramBot(): Bot {
@@ -87,6 +74,8 @@ export function createTelegramBot(): Bot {
         externalId,
         systemContext,
       });
+
+      await ensureVaultPushed();
 
       await ctx.reply(response.result || "Done.", {
         parse_mode: "Markdown",
