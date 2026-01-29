@@ -2,7 +2,11 @@ import { Bot, Context } from "grammy";
 import { env } from "../config.js";
 import { runAgent } from "../agent.js";
 import { clearSession } from "../sessions.js";
-import { ensureVaultPushed, VAULT_PATH } from "../obsidian.js";
+import { ensureVaultPushed, VAULT_PATH, appendVoiceNote, commitAndPush } from "../obsidian.js";
+import { transcribeAudio } from "../transcription.js";
+import { writeFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 let botInstance: Bot | null = null;
 
@@ -85,6 +89,79 @@ export function createTelegramBot(): Bot {
       await ctx.reply(
         `Error: ${error instanceof Error ? error.message : "Unknown error"}`
       );
+    }
+  });
+
+  // Handle voice messages
+  bot.on("message:voice", async (ctx) => {
+    const voice = ctx.message.voice;
+    let tempFilePath: string | null = null;
+
+    try {
+      await ctx.reply("🎤 Transcribing voice message...");
+
+      // Download voice file
+      const file = await ctx.api.getFile(voice.file_id);
+      const fileUrl = `https://api.telegram.org/file/bot${env.telegramBotToken}/${file.file_path}`;
+
+      // Download to temp file
+      tempFilePath = join(tmpdir(), `voice-${Date.now()}.ogg`);
+      const response = await fetch(fileUrl);
+      const buffer = await response.arrayBuffer();
+      writeFileSync(tempFilePath, Buffer.from(buffer));
+
+      // Transcribe with Groq
+      const transcription = await transcribeAudio(tempFilePath);
+
+      // Save to Obsidian vault
+      const { filePath, isDuplicate } = await appendVoiceNote({
+        transcript: transcription.text,
+        duration: transcription.duration,
+      });
+
+      if (!isDuplicate) {
+        const dateStr = new Date().toISOString().split("T")[0];
+        await commitAndPush(`Voice note ${dateStr}`);
+        console.log(`Voice message saved to ${filePath}`);
+      }
+
+      // Process with agent (same as API voice-note endpoint)
+      const externalId = `telegram:${ctx.from!.id}`;
+      const systemContext = buildTelegramSystemContext();
+
+      const agentPrompt = `After reading all context files, process this voice note transcript:
+---
+${transcription.text}
+---`;
+
+      const agentResponse = await runAgent({
+        prompt: agentPrompt,
+        externalId: "api:voice-notes",
+        systemContext,
+      });
+
+      await ensureVaultPushed();
+
+      await ctx.reply(
+        agentResponse.result || "Voice note logged and processed.",
+        {
+          parse_mode: "Markdown",
+        }
+      );
+    } catch (error) {
+      console.error("Voice message error:", error);
+      await ctx.reply(
+        `Error processing voice message: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    } finally {
+      // Clean up temp file
+      if (tempFilePath) {
+        try {
+          unlinkSync(tempFilePath);
+        } catch (e) {
+          console.error("Failed to delete temp file:", e);
+        }
+      }
     }
   });
 
