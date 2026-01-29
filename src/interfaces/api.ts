@@ -123,6 +123,7 @@ export async function createApiServer() {
       // Format timestamp from createdAt
       const timestamp = createdAt
         ? new Date(createdAt).toLocaleTimeString("en-US", {
+            timeZone: "America/New_York",
             hour: "2-digit",
             minute: "2-digit",
             hour12: true,
