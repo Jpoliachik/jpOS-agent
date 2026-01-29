@@ -15,7 +15,8 @@
     "grammy": "^1.21.1",
     "fastify": "^4.26.0",
     "@fastify/bearer-auth": "^9.4.0",
-    "dotenv": "^16.4.1"
+    "dotenv": "^16.4.1",
+    "node-cron": "^3.0.3"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
@@ -23,6 +24,7 @@
     "typescript": "^5.3.3",
     "eslint": "^8.56.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
-    "@typescript-eslint/parser": "^6.19.0"
+    "@typescript-eslint/parser": "^6.19.0",
+    "@types/node-cron": "^3.0.11"
   }
 }
