@@ -63,6 +63,9 @@ export function createTelegramBot(): Bot {
     const externalId = `telegram:${ctx.from!.id}`;
     const userMessage = ctx.message.text;
 
+    // Send immediate acknowledgment
+    await ctx.reply("Got it, working on it...");
+
     // Send typing indicator
     await ctx.replyWithChatAction("typing");
 

@@ -130,6 +130,9 @@ export async function createApiServer() {
         : undefined;
 
       try {
+        // Send immediate acknowledgment to Telegram
+        await sendTelegramMessage("Got your voice note, working on it...");
+
         // 1. Log to Obsidian vault
         const { filePath, isDuplicate } = await appendVoiceNote({ transcript, timestamp, duration, id, createdAt });
 
