@@ -1,4 +1,3 @@
-import cron from "node-cron";
 import { runAgent } from "./agent.js";
 import { sendTelegramMessage } from "./interfaces/telegram.js";
 import { VAULT_PATH } from "./obsidian.js";
@@ -43,7 +42,7 @@ Current time: ${time}
 Obsidian vault path: ${VAULT_PATH}`;
 }
 
-async function runDailyPrep(): Promise<void> {
+export async function runDailyPrep(): Promise<void> {
   console.log("Running daily prep job...");
 
   try {
@@ -71,16 +70,3 @@ async function runDailyPrep(): Promise<void> {
     );
   }
 }
-
-export function startCronJobs(): void {
-  // Run at 4:00 AM Eastern time every day
-  // Cron format: minute hour day-of-month month day-of-week
-  cron.schedule("0 4 * * *", runDailyPrep, {
-    timezone: "America/New_York",
-  });
-
-  console.log("Cron jobs started: daily prep at 4:00 AM Eastern");
-}
-
-// Export for manual testing
-export { runDailyPrep };

@@ -1,7 +1,6 @@
 import { env } from "./config.js";
 import { createTelegramBot } from "./interfaces/telegram.js";
 import { createApiServer } from "./interfaces/api.js";
-import { startCronJobs } from "./cron.js";
 
 async function main() {
   console.log("Starting jpOS Agent...");
@@ -18,9 +17,6 @@ async function main() {
   const server = await createApiServer();
   await server.listen({ port: env.port, host: "0.0.0.0" });
   console.log(`API server listening on port ${env.port}`);
-
-  // Start scheduled jobs
-  startCronJobs();
 
   // Graceful shutdown
   const shutdown = async () => {
