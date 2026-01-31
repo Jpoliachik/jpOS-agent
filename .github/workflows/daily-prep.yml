@@ -1,0 +1,31 @@
+name: Daily Prep
+
+on:
+  schedule:
+    # 4 AM Eastern = 9 AM UTC (EST) or 8 AM UTC (EDT)
+    # Using 9 AM UTC to cover EST; during EDT it will run at 5 AM Eastern
+    # For exact 4 AM Eastern year-round, we'd need two schedules
+    - cron: '0 9 * * *'
+  workflow_dispatch: # Allow manual trigger for testing
+
+jobs:
+  trigger-daily-prep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Daily Prep
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://jpos-agent.fly.dev/daily-prep" \
+            -H "Authorization: Bearer ${{ secrets.API_BEARER_TOKEN }}" \
+            -H "Content-Type: application/json")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Code: $http_code"
+
+          if [ "$http_code" -ne 200 ]; then
+            echo "Failed to trigger daily prep"
+            exit 1
+          fi

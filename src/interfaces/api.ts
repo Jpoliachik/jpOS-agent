@@ -10,6 +10,7 @@ import {
 } from "../obsidian.js";
 import type { VaultPushResult } from "../obsidian.js";
 import { sendTelegramMessage } from "./telegram.js";
+import { runDailyPrep } from "../cron.js";
 
 async function processVoiceNoteAsync(transcript: string): Promise<void> {
   const today = new Date().toLocaleDateString("en-CA", {
@@ -99,6 +100,20 @@ export async function createApiServer() {
         };
       } catch (error) {
         console.error("Agent error:", error);
+        return reply.status(500).send({
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    // Daily prep endpoint (triggered by GitHub Actions cron)
+    app.post("/daily-prep", async (request, reply) => {
+      try {
+        console.log("Daily prep triggered via API");
+        await runDailyPrep();
+        return { status: "ok", message: "Daily prep sent" };
+      } catch (error) {
+        console.error("Daily prep API error:", error);
         return reply.status(500).send({
           error: error instanceof Error ? error.message : "Unknown error",
         });
