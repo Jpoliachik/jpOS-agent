@@ -31,6 +31,7 @@ Do NOT create Todoist tasks for software project work (those go to GitHub Issues
 Rules:
 - Only create a task when the transcript contains a clear, actionable personal to-do
 - Be conservative — vague thoughts are not tasks
+- Before creating a task, use `todoist_list_tasks` to check if a similar task already exists. Skip creation if a duplicate is found
 - Set `due_string` using the date mentioned, or "today" if none — EXCEPT for shopping lists or store-related lists (e.g., grocery store, hardware store), which should have NO due date
 - ALWAYS end the `description` with "Created by jpOS". Add brief context before that line if useful
 
