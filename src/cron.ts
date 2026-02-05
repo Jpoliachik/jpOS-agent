@@ -1,7 +1,8 @@
 import cron from "node-cron";
 import { runAgent } from "./agent.js";
 import { sendTelegramMessage } from "./interfaces/telegram.js";
-import { VAULT_PATH } from "./obsidian.js";
+import { VAULT_PATH, commitAndPush } from "./obsidian.js";
+import { generatePreviousMonthDigest } from "./digest.js";
 
 const DAILY_PREP_PROMPT = `You are generating a morning daily prep briefing for Justin.
 
@@ -72,6 +73,32 @@ async function runDailyPrep(): Promise<void> {
   }
 }
 
+async function runMonthlyDigest(): Promise<void> {
+  console.log("Running monthly digest job...");
+
+  try {
+    const result = await generatePreviousMonthDigest();
+
+    // Commit and push to vault
+    await commitAndPush(`Add monthly digest: ${result.month}`);
+
+    // Send Telegram notification
+    const message = `📊 Monthly digest generated for ${result.month}\n\n` +
+      `📎 Links found: ${result.totalLinks}\n` +
+      `📝 New notes: ${result.newNotes.length}\n` +
+      `✏️ Edited notes: ${result.editedNotes.length}\n\n` +
+      `Saved to: digests/${result.month}.md`;
+
+    await sendTelegramMessage(message);
+    console.log("Monthly digest sent successfully");
+  } catch (error) {
+    console.error("Monthly digest job failed:", error);
+    await sendTelegramMessage(
+      `⚠️ Monthly digest failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
+}
+
 export function startCronJobs(): void {
   // Run at 4:00 AM Eastern time every day
   // Cron format: minute hour day-of-month month day-of-week
@@ -79,8 +106,15 @@ export function startCronJobs(): void {
     timezone: "America/New_York",
   });
 
-  console.log("Cron jobs started: daily prep at 4:00 AM Eastern");
+  // Run at 8:00 AM Eastern on the 1st of every month
+  cron.schedule("0 8 1 * *", runMonthlyDigest, {
+    timezone: "America/New_York",
+  });
+
+  console.log("Cron jobs started:");
+  console.log("  - Daily prep at 4:00 AM Eastern");
+  console.log("  - Monthly digest at 8:00 AM Eastern on the 1st");
 }
 
 // Export for manual testing
-export { runDailyPrep };
+export { runDailyPrep, runMonthlyDigest };
