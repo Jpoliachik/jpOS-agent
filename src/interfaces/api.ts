@@ -123,6 +123,7 @@ export async function createApiServer() {
       // Format timestamp from createdAt
       const timestamp = createdAt
         ? new Date(createdAt).toLocaleTimeString("en-US", {
+            timeZone: "America/New_York",
             hour: "2-digit",
             minute: "2-digit",
             hour12: true,
@@ -130,6 +131,9 @@ export async function createApiServer() {
         : undefined;
 
       try {
+        // Send immediate acknowledgment to Telegram
+        await sendTelegramMessage("Got your voice note, working on it...");
+
         // 1. Log to Obsidian vault
         const { filePath, isDuplicate } = await appendVoiceNote({ transcript, timestamp, duration, id, createdAt });
 
