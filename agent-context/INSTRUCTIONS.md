@@ -3,8 +3,31 @@
 ## Voice Notes
 When processing a voice note transcript:
 - Analyze for actionable items, ideas, context updates, and project references
+- Infer mental health metrics from the content and context
 - Take proactive action — do NOT ask for permission
 - Follow the sections below for each type of action
+
+### Mental Health Metrics Inference
+After processing each voice note, infer mental health metrics (1-10 scale) based on the content:
+- **mood** (1-10): Overall emotional state (1=very negative, 5=neutral, 10=very positive)
+- **energy** (1-10): Physical and mental energy levels (1=exhausted, 5=moderate, 10=highly energized)
+- **mental_clarity** (1-10): Sharpness, focus, cognitive function (1=very foggy, 5=normal, 10=extremely sharp)
+- **stress** (1-10): Stress and anxiety levels (1=very relaxed, 5=moderate, 10=extremely stressed)
+
+Include metrics in your response using this exact format:
+```
+MENTAL_HEALTH_METRICS:
+mood: [number]
+energy: [number]
+mental_clarity: [number]
+stress: [number]
+```
+
+Guidelines for inference:
+- Base metrics on explicit statements and implicit tone/content
+- If a metric can't be reliably inferred from the note, omit it from the response
+- Consider context from time of day and content type
+- Be conservative — only include metrics you're confident about
 
 ## GitHub Issues (Project Work)
 All project-related tasks, bugs, features, and feedback go to GitHub Issues.

@@ -6,10 +6,39 @@ import {
   appendVoiceNote,
   commitAndPush,
   ensureVaultPushed,
+  updateDailyLogMetrics,
   VAULT_PATH,
 } from "../obsidian.js";
-import type { VaultPushResult } from "../obsidian.js";
+import type { MentalHealthMetrics, VaultPushResult } from "../obsidian.js";
 import { sendTelegramMessage } from "./telegram.js";
+
+function parseMetricsFromResponse(response: string): MentalHealthMetrics | null {
+  const metricsRegex = /MENTAL_HEALTH_METRICS:\s*\n\s*mood:\s*(\d+)\s*\n\s*energy:\s*(\d+)\s*\n\s*mental_clarity:\s*(\d+)\s*\n\s*stress:\s*(\d+)/;
+  const match = response.match(metricsRegex);
+
+  if (!match) {
+    // Try partial match - individual metrics
+    const metrics: MentalHealthMetrics = {};
+    const moodMatch = response.match(/mood:\s*(\d+)/);
+    const energyMatch = response.match(/energy:\s*(\d+)/);
+    const clarityMatch = response.match(/mental_clarity:\s*(\d+)/);
+    const stressMatch = response.match(/stress:\s*(\d+)/);
+
+    if (moodMatch) metrics.mood = Number.parseInt(moodMatch[1], 10);
+    if (energyMatch) metrics.energy = Number.parseInt(energyMatch[1], 10);
+    if (clarityMatch) metrics.mental_clarity = Number.parseInt(clarityMatch[1], 10);
+    if (stressMatch) metrics.stress = Number.parseInt(stressMatch[1], 10);
+
+    return Object.keys(metrics).length > 0 ? metrics : null;
+  }
+
+  return {
+    mood: Number.parseInt(match[1], 10),
+    energy: Number.parseInt(match[2], 10),
+    mental_clarity: Number.parseInt(match[3], 10),
+    stress: Number.parseInt(match[4], 10),
+  };
+}
 
 async function processVoiceNoteAsync(transcript: string): Promise<void> {
   const today = new Date().toLocaleDateString("en-CA", {
@@ -35,6 +64,19 @@ ${transcript}
     prompt: context,
     externalId: "api:voice-notes",
   });
+
+  // Extract and save mental health metrics if present
+  if (response.result) {
+    const metrics = parseMetricsFromResponse(response.result);
+    if (metrics) {
+      try {
+        await updateDailyLogMetrics(new Date(), metrics);
+        console.log("Mental health metrics updated:", metrics);
+      } catch (error) {
+        console.error("Failed to update mental health metrics:", error);
+      }
+    }
+  }
 
   const pushResult = await ensureVaultPushed();
   const telegramMessage = buildVoiceNoteTelegramMessage(response.result, pushResult);

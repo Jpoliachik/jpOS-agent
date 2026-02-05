@@ -20,6 +20,7 @@ function getObsidianRepoUrl(): string {
 }
 export const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || "/data/obsidian-vault";
 const VOICE_NOTES_DIR = "voice-notes";
+const DAILY_LOGS_DIR = "logs";
 
 // Hardcoded timezone for date/time conversion
 // TODO: Make configurable if needed for other timezones
@@ -250,4 +251,131 @@ export async function ensureVaultPushed(): Promise<VaultPushResult> {
     console.error("Vault safety net failed:", errorMsg);
     return { status: "failed", error: errorMsg };
   }
+}
+
+// Mental Health Metrics (1-10 scale)
+export interface MentalHealthMetrics {
+  mood?: number;
+  energy?: number;
+  mental_clarity?: number;
+  stress?: number;
+}
+
+interface DailyLogFrontmatter {
+  date: string;
+  mental_health?: MentalHealthMetrics;
+}
+
+function parseFrontmatter(content: string): { frontmatter: DailyLogFrontmatter | null; body: string } {
+  const frontmatterRegex = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
+  const match = content.match(frontmatterRegex);
+
+  if (!match) {
+    return { frontmatter: null, body: content };
+  }
+
+  const frontmatterText = match[1];
+  const body = match[2];
+
+  try {
+    // Simple YAML parsing for our specific structure
+    const frontmatter: DailyLogFrontmatter = { date: "" };
+    const lines = frontmatterText.split("\n");
+
+    let inMentalHealth = false;
+    for (const line of lines) {
+      if (line.startsWith("date:")) {
+        frontmatter.date = line.replace("date:", "").trim();
+      } else if (line.startsWith("mental_health:")) {
+        inMentalHealth = true;
+        frontmatter.mental_health = {};
+      } else if (inMentalHealth && line.trim().startsWith("-")) {
+        // Skip
+      } else if (inMentalHealth && line.includes(":")) {
+        const [key, value] = line.trim().split(":").map(s => s.trim());
+        const numValue = Number.parseInt(value, 10);
+        if (!Number.isNaN(numValue)) {
+          frontmatter.mental_health![key as keyof MentalHealthMetrics] = numValue;
+        }
+      } else if (inMentalHealth && !line.trim().startsWith(" ") && line.trim() !== "") {
+        inMentalHealth = false;
+      }
+    }
+
+    return { frontmatter, body };
+  } catch {
+    return { frontmatter: null, body: content };
+  }
+}
+
+function serializeFrontmatter(frontmatter: DailyLogFrontmatter): string {
+  let yaml = `---\ndate: ${frontmatter.date}\n`;
+
+  if (frontmatter.mental_health && Object.keys(frontmatter.mental_health).length > 0) {
+    yaml += "mental_health:\n";
+    if (frontmatter.mental_health.mood !== undefined) {
+      yaml += `  mood: ${frontmatter.mental_health.mood}\n`;
+    }
+    if (frontmatter.mental_health.energy !== undefined) {
+      yaml += `  energy: ${frontmatter.mental_health.energy}\n`;
+    }
+    if (frontmatter.mental_health.mental_clarity !== undefined) {
+      yaml += `  mental_clarity: ${frontmatter.mental_health.mental_clarity}\n`;
+    }
+    if (frontmatter.mental_health.stress !== undefined) {
+      yaml += `  stress: ${frontmatter.mental_health.stress}\n`;
+    }
+  }
+
+  yaml += "---\n";
+  return yaml;
+}
+
+export async function updateDailyLogMetrics(
+  date: Date,
+  metrics: MentalHealthMetrics,
+): Promise<void> {
+  await ensureVaultReady();
+
+  const dailyLogsPath = join(VAULT_PATH, DAILY_LOGS_DIR);
+  if (!existsSync(dailyLogsPath)) {
+    mkdirSync(dailyLogsPath, { recursive: true });
+  }
+
+  const dateStr = getDateString(date);
+  const filePath = join(dailyLogsPath, `${dateStr}.md`);
+
+  let frontmatter: DailyLogFrontmatter;
+  let body: string;
+
+  if (existsSync(filePath)) {
+    // Read existing file and update metrics
+    const content = readFileSync(filePath, "utf-8");
+    const parsed = parseFrontmatter(content);
+
+    if (parsed.frontmatter) {
+      frontmatter = parsed.frontmatter;
+      frontmatter.mental_health = {
+        ...frontmatter.mental_health,
+        ...metrics,
+      };
+    } else {
+      frontmatter = {
+        date: dateStr,
+        mental_health: metrics,
+      };
+    }
+    body = parsed.body;
+  } else {
+    // Create new daily log
+    frontmatter = {
+      date: dateStr,
+      mental_health: metrics,
+    };
+    body = `# Daily Log - ${dateStr}\n\n`;
+  }
+
+  const newContent = serializeFrontmatter(frontmatter) + body;
+  writeFileSync(filePath, newContent);
+  console.log(`Updated daily log metrics for ${dateStr}`);
 }
