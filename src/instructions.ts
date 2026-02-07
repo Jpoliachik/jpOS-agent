@@ -1,11 +1,11 @@
 /**
  * Instruction loader — reads system prompts and skills from the Obsidian vault.
  *
- * Vault layout:
- *   system/soul.md            — agent identity & hard rules
- *   system/instructions.md    — general action guidelines
- *   system/skills/<name>.md   — per-skill prompts (voice-note, daily-prep, message)
- *   context/*.md              — user context files (goals, focus, projects, etc.)
+ * Vault layout (all under jpOS/ in the vault):
+ *   jpOS/system/soul.md            — agent identity & hard rules
+ *   jpOS/system/instructions.md    — general action guidelines
+ *   jpOS/system/skills/<name>.md   — per-skill prompts (voice-note, daily-prep, message)
+ *   jpOS/context/*.md              — user context files (goals, focus, projects, etc.)
  *
  * Template variables in .md files are replaced at load time:
  *   {{date}}        — today's date (YYYY-MM-DD, America/New_York)
@@ -16,7 +16,7 @@
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { VAULT_PATH } from "./obsidian.js";
+import { VAULT_PATH, JPOS_DIR } from "./obsidian.js";
 
 const TIMEZONE = "America/New_York";
 
@@ -55,27 +55,27 @@ function applyVars(text: string, vars: Record<string, string>): string {
 // Core loaders
 // ---------------------------------------------------------------------------
 
-/** Read system/soul.md from the vault. */
+/** Read jpOS/system/soul.md from the vault. */
 export function loadSoul(): string {
-  const path = join(VAULT_PATH, "system", "soul.md");
+  const path = join(VAULT_PATH, JPOS_DIR, "system", "soul.md");
   return readFileSafe(path) ?? "";
 }
 
-/** Read system/instructions.md from the vault. */
+/** Read jpOS/system/instructions.md from the vault. */
 export function loadInstructions(): string {
-  const path = join(VAULT_PATH, "system", "instructions.md");
+  const path = join(VAULT_PATH, JPOS_DIR, "system", "instructions.md");
   return readFileSafe(path) ?? "";
 }
 
-/** Read a named skill from system/skills/<name>.md. */
+/** Read a named skill from jpOS/system/skills/<name>.md. */
 export function loadSkill(name: string): string {
-  const path = join(VAULT_PATH, "system", "skills", `${name}.md`);
+  const path = join(VAULT_PATH, JPOS_DIR, "system", "skills", `${name}.md`);
   return readFileSafe(path) ?? "";
 }
 
-/** Read all context/*.md files and return them concatenated. */
+/** Read all jpOS/context/*.md files and return them concatenated. */
 export function loadContext(): string {
-  const dir = join(VAULT_PATH, "context");
+  const dir = join(VAULT_PATH, JPOS_DIR, "context");
   if (!existsSync(dir)) return "";
 
   const files = readdirSync(dir).filter((f) => f.endsWith(".md")).sort();

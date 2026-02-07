@@ -19,7 +19,8 @@ function getObsidianRepoUrl(): string {
   return "git@github.com:Jpoliachik/obsidian.git";
 }
 export const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || "/data/obsidian-vault";
-const VOICE_NOTES_DIR = "voice-notes";
+export const JPOS_DIR = "jpOS";
+const VOICE_NOTES_DIR = join(JPOS_DIR, "voice-notes");
 
 // Hardcoded timezone for date/time conversion
 // TODO: Make configurable if needed for other timezones
@@ -70,7 +71,7 @@ function seedSystemDefaults(): void {
   const defaultsDir = join(process.env.AGENT_CWD || "/app", "system-defaults");
   if (!existsSync(defaultsDir)) return;
 
-  const systemDir = join(VAULT_PATH, "system");
+  const systemDir = join(VAULT_PATH, JPOS_DIR, "system");
   const skillsDir = join(systemDir, "skills");
 
   // Ensure directories exist
@@ -201,7 +202,7 @@ export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<Ap
 }
 
 export function readVaultGuide(): string | null {
-  const guidePath = join(VAULT_PATH, "context", "vault-guide.md");
+  const guidePath = join(VAULT_PATH, JPOS_DIR, "context", "vault-guide.md");
   try {
     return readFileSync(guidePath, "utf-8");
   } catch {
@@ -210,7 +211,7 @@ export function readVaultGuide(): string | null {
 }
 
 export function readContextFiles(): string {
-  const contextDir = join(VAULT_PATH, "context");
+  const contextDir = join(VAULT_PATH, JPOS_DIR, "context");
   if (!existsSync(contextDir)) {
     return "";
   }

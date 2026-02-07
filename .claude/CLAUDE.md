@@ -19,13 +19,15 @@ Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 
 ## System Instructions (Obsidian-driven)
 
-All agent behavior is defined in markdown files inside the Obsidian vault under `system/`:
+All jpOS data lives under `jpOS/` in the Obsidian vault:
 
-- `system/soul.md` — Agent identity, personality, hard rules
-- `system/instructions.md` — General action guidelines (GitHub Issues, Todoist, vault notes, etc.)
-- `system/skills/voice-note.md` — How to process voice note transcripts
-- `system/skills/daily-prep.md` — Morning briefing prompt
-- `system/skills/message.md` — How to handle direct messages
+- `jpOS/system/soul.md` — Agent identity, personality, hard rules
+- `jpOS/system/instructions.md` — General action guidelines (GitHub Issues, Todoist, vault notes, etc.)
+- `jpOS/system/skills/voice-note.md` — How to process voice note transcripts
+- `jpOS/system/skills/daily-prep.md` — Morning briefing prompt
+- `jpOS/system/skills/message.md` — How to handle direct messages
+- `jpOS/context/` — User context files (goals, focus, active-projects, people)
+- `jpOS/voice-notes/` — Daily voice note logs
 
 Template variables (`{{date}}`, `{{time}}`, `{{vault_path}}`, `{{transcript}}`) are replaced at load time.
 
@@ -63,6 +65,7 @@ Health check (no auth).
 
 - Repo: `github.com/Jpoliachik/obsidian`
 - Cloned to `/data/obsidian-vault` on the container
-- Voice notes saved to `voice-notes/YYYY-MM-DD.md`
+- All jpOS data under `jpOS/` directory (voice-notes, context, system instructions)
+- Voice notes saved to `jpOS/voice-notes/YYYY-MM-DD.md`
 - Uses GitHub PAT (GITHUB_PAT secret) for push access
 - **Timezone: `America/New_York`** - hardcoded in `src/obsidian.ts` for date/time conversion

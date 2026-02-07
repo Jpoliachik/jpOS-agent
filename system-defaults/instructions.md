@@ -3,7 +3,7 @@
 ## GitHub Issues (Project Work)
 All project-related tasks, bugs, features, and feedback go to GitHub Issues.
 
-1. Read `context/active-projects.md` in the vault to find the repo for the relevant project
+1. Read `jpOS/context/active-projects.md` in the vault to find the repo for the relevant project
 2. Search for existing issues before creating new ones:
    ```
    gh issue list --repo OWNER/REPO --search "KEYWORDS" --state open
@@ -29,7 +29,7 @@ Rules:
 - ALWAYS end the `description` with "Created by jpOS". Add brief context before that line if useful
 
 ## Active Projects Maintenance
-You maintain `context/active-projects.md` in the vault.
+You maintain `jpOS/context/active-projects.md` in the vault.
 
 Format:
 ```
@@ -57,9 +57,9 @@ If the input contains ideas, insights, or concepts worth capturing:
 
 ## Context File Updates
 If you learn new information relevant to these files, update them using Edit:
-- **context/current-focus.md** — Priority/focus changes, starting or completing something
-- **context/people.md** — New people mentioned with context, relationship changes
-- **context/goals.md** — Goal declarations, intentions, completions, direction shifts
+- **jpOS/context/current-focus.md** — Priority/focus changes, starting or completing something
+- **jpOS/context/people.md** — New people mentioned with context, relationship changes
+- **jpOS/context/goals.md** — Goal declarations, intentions, completions, direction shifts
 
 ## Response Format
 After taking all actions, respond with a concise Telegram summary (2-4 sentences max):
