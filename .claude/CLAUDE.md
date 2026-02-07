@@ -11,10 +11,25 @@ Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 ## Architecture
 
 - `src/agent.ts` - Agent SDK wrapper with session management
+- `src/instructions.ts` - Loads system prompts & skills from Obsidian vault
 - `src/interfaces/telegram.ts` - Telegram bot (grammy)
 - `src/interfaces/api.ts` - HTTP API (Fastify)
 - `src/mcp/todoist.ts` - Todoist MCP server
 - `src/obsidian.ts` - Git operations for Obsidian vault
+
+## System Instructions (Obsidian-driven)
+
+All agent behavior is defined in markdown files inside the Obsidian vault under `system/`:
+
+- `system/soul.md` — Agent identity, personality, hard rules
+- `system/instructions.md` — General action guidelines (GitHub Issues, Todoist, vault notes, etc.)
+- `system/skills/voice-note.md` — How to process voice note transcripts
+- `system/skills/daily-prep.md` — Morning briefing prompt
+- `system/skills/message.md` — How to handle direct messages
+
+Template variables (`{{date}}`, `{{time}}`, `{{vault_path}}`, `{{transcript}}`) are replaced at load time.
+
+Default versions of these files ship in `system-defaults/` and are seeded into the vault on first run (won't overwrite edits made in Obsidian).
 
 ## API Endpoints
 

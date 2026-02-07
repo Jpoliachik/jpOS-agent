@@ -6,34 +6,18 @@ import {
   appendVoiceNote,
   commitAndPush,
   ensureVaultPushed,
-  VAULT_PATH,
 } from "../obsidian.js";
 import type { VaultPushResult } from "../obsidian.js";
 import { sendTelegramMessage } from "./telegram.js";
+import { buildSystemContext } from "../instructions.js";
 
 async function processVoiceNoteAsync(transcript: string): Promise<void> {
-  const today = new Date().toLocaleDateString("en-CA", {
-    timeZone: "America/New_York",
-  });
-
-  const context = `CRITICAL: You MUST use tools for every action. NEVER generate a response claiming you took actions without tool confirmation.
-
-Before processing this voice note, read these files IN ORDER:
-1. /app/agent-context/SOUL.md — your identity and hard rules
-2. /app/agent-context/INSTRUCTIONS.md — what to do and how
-3. All .md files in ${VAULT_PATH}/context/ — current user context (use Glob then Read)
-
-Today's date: ${today}
-Obsidian vault path: ${VAULT_PATH}
-
-After reading all files, process this voice note transcript:
----
-${transcript}
----`;
+  const systemContext = buildSystemContext("voice-note", { transcript });
 
   const response = await runAgent({
-    prompt: context,
+    prompt: "Process the voice note transcript described in your instructions.",
     externalId: "api:voice-notes",
+    systemContext,
   });
 
   const pushResult = await ensureVaultPushed();
