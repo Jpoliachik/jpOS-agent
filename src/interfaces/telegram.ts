@@ -11,6 +11,27 @@ import { join } from "node:path";
 
 let botInstance: Bot | null = null;
 
+/**
+ * Send a message trying Markdown parse mode first.
+ * If Telegram rejects the markup, retry as plain text.
+ */
+async function sendWithMarkdownFallback(
+  send: (opts?: { parse_mode: "Markdown" }) => Promise<unknown>,
+): Promise<void> {
+  try {
+    await send({ parse_mode: "Markdown" });
+  } catch (err) {
+    const is400 =
+      err instanceof Error &&
+      err.message.includes("can't parse entities");
+    if (is400) {
+      await send();
+    } else {
+      throw err;
+    }
+  }
+}
+
 export function createTelegramBot(): Bot {
   const bot = new Bot(env.telegramBotToken);
   botInstance = bot;
@@ -69,9 +90,8 @@ export function createTelegramBot(): Bot {
 
       await ensureVaultPushed();
 
-      await ctx.reply(response.result || "Done.", {
-        parse_mode: "Markdown",
-      });
+      const text = response.result || "Done.";
+      await sendWithMarkdownFallback((opts) => ctx.reply(text, opts));
     } catch (error) {
       console.error("Agent error:", error);
       await ctx.reply(
@@ -126,12 +146,8 @@ export function createTelegramBot(): Bot {
 
       await ensureVaultPushed();
 
-      await ctx.reply(
-        agentResponse.result || "Voice note logged and processed.",
-        {
-          parse_mode: "Markdown",
-        }
-      );
+      const voiceText = agentResponse.result || "Voice note logged and processed.";
+      await sendWithMarkdownFallback((opts) => ctx.reply(voiceText, opts));
     } catch (error) {
       console.error("Voice message error:", error);
       await ctx.reply(
@@ -159,9 +175,9 @@ export async function sendTelegramMessage(text: string): Promise<void> {
   }
 
   try {
-    await botInstance.api.sendMessage(env.allowedTelegramUserId, text, {
-      parse_mode: "Markdown",
-    });
+    await sendWithMarkdownFallback((opts) =>
+      botInstance!.api.sendMessage(env.allowedTelegramUserId, text, opts),
+    );
   } catch (error) {
     console.error("Failed to send Telegram message:", error);
   }
