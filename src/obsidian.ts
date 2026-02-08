@@ -5,7 +5,7 @@
 
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync, readdirSync, cpSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -19,7 +19,8 @@ function getObsidianRepoUrl(): string {
   return "git@github.com:Jpoliachik/obsidian.git";
 }
 export const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || "/data/obsidian-vault";
-const VOICE_NOTES_DIR = "voice-notes";
+export const JPOS_DIR = "jpOS";
+const VOICE_NOTES_DIR = join(JPOS_DIR, "voice-notes");
 
 // Hardcoded timezone for date/time conversion
 // TODO: Make configurable if needed for other timezones
@@ -61,6 +62,48 @@ async function configureGit(): Promise<void> {
   await execAsync(`git config --global user.name "jpOS Agent"`);
 }
 
+/**
+ * Seed system/ directory in the vault with defaults from system-defaults/
+ * if they don't already exist. This ensures the vault always has a baseline
+ * set of system instructions that can be edited in Obsidian.
+ */
+function seedSystemDefaults(): void {
+  const defaultsDir = join(process.env.AGENT_CWD || "/app", "system-defaults");
+  if (!existsSync(defaultsDir)) return;
+
+  const systemDir = join(VAULT_PATH, JPOS_DIR, "system");
+  const skillsDir = join(systemDir, "skills");
+
+  // Ensure directories exist
+  if (!existsSync(systemDir)) mkdirSync(systemDir, { recursive: true });
+  if (!existsSync(skillsDir)) mkdirSync(skillsDir, { recursive: true });
+
+  // Copy each default file only if the vault doesn't already have it
+  const seedFile = (relativePath: string) => {
+    const src = join(defaultsDir, relativePath);
+    const dest = join(systemDir, relativePath);
+    if (!existsSync(dest) && existsSync(src)) {
+      const destDir = join(dest, "..");
+      if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+      cpSync(src, dest);
+      console.log(`Seeded default: system/${relativePath}`);
+    }
+  };
+
+  // Seed top-level system files
+  for (const file of readdirSync(defaultsDir).filter(f => f.endsWith(".md"))) {
+    seedFile(file);
+  }
+
+  // Seed skill files
+  const skillsDefaultsDir = join(defaultsDir, "skills");
+  if (existsSync(skillsDefaultsDir)) {
+    for (const file of readdirSync(skillsDefaultsDir).filter(f => f.endsWith(".md"))) {
+      seedFile(join("skills", file));
+    }
+  }
+}
+
 export async function ensureVaultReady(): Promise<void> {
   await ensureSshConfigured();
   await configureGit();
@@ -71,6 +114,9 @@ export async function ensureVaultReady(): Promise<void> {
   } else {
     await pullVault();
   }
+
+  // Seed system instruction defaults if missing
+  seedSystemDefaults();
 }
 
 export async function pullVault(): Promise<void> {
@@ -156,7 +202,7 @@ export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<Ap
 }
 
 export function readVaultGuide(): string | null {
-  const guidePath = join(VAULT_PATH, "context", "vault-guide.md");
+  const guidePath = join(VAULT_PATH, JPOS_DIR, "context", "vault-guide.md");
   try {
     return readFileSync(guidePath, "utf-8");
   } catch {
@@ -165,7 +211,7 @@ export function readVaultGuide(): string | null {
 }
 
 export function readContextFiles(): string {
-  const contextDir = join(VAULT_PATH, "context");
+  const contextDir = join(VAULT_PATH, JPOS_DIR, "context");
   if (!existsSync(contextDir)) {
     return "";
   }

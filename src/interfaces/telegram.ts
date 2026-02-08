@@ -2,29 +2,14 @@ import { Bot, Context } from "grammy";
 import { env } from "../config.js";
 import { runAgent } from "../agent.js";
 import { clearSession } from "../sessions.js";
-import { ensureVaultPushed, VAULT_PATH, appendVoiceNote, commitAndPush } from "../obsidian.js";
+import { ensureVaultPushed, appendVoiceNote, commitAndPush } from "../obsidian.js";
 import { transcribeAudio } from "../transcription.js";
+import { buildSystemContext } from "../instructions.js";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 let botInstance: Bot | null = null;
-
-function buildTelegramSystemContext(): string {
-  const today = new Date().toLocaleDateString("en-CA", {
-    timeZone: "America/New_York",
-  });
-
-  return `CRITICAL: You MUST use tools for every action. NEVER fabricate responses.
-
-Before responding, read these files IN ORDER:
-1. /app/agent-context/SOUL.md — your identity and hard rules
-2. /app/agent-context/INSTRUCTIONS.md — what to do and how
-3. All .md files in ${VAULT_PATH}/context/ — current user context (use Glob then Read)
-
-Today's date: ${today}
-Obsidian vault path: ${VAULT_PATH}`;
-}
 
 export function createTelegramBot(): Bot {
   const bot = new Bot(env.telegramBotToken);
@@ -74,7 +59,7 @@ export function createTelegramBot(): Bot {
     await ctx.replyWithChatAction("typing");
 
     try {
-      const systemContext = buildTelegramSystemContext();
+      const systemContext = buildSystemContext("message");
 
       const response = await runAgent({
         prompt: userMessage,
@@ -129,16 +114,12 @@ export function createTelegramBot(): Bot {
       }
 
       // Process with agent (same as API voice-note endpoint)
-      const externalId = `telegram:${ctx.from!.id}`;
-      const systemContext = buildTelegramSystemContext();
-
-      const agentPrompt = `After reading all context files, process this voice note transcript:
----
-${transcription.text}
----`;
+      const systemContext = buildSystemContext("voice-note", {
+        transcript: transcription.text,
+      });
 
       const agentResponse = await runAgent({
-        prompt: agentPrompt,
+        prompt: "Process the voice note transcript described in your instructions.",
         externalId: "api:voice-notes",
         systemContext,
       });
