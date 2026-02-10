@@ -69,9 +69,11 @@ export function createTelegramBot(): Bot {
 
       await ensureVaultPushed();
 
-      await ctx.reply(response.result || "Done.", {
-        parse_mode: "Markdown",
-      });
+      await sendWithMarkdownFallback((parseMode) =>
+        ctx.reply(response.result || "Done.", {
+          ...(parseMode && { parse_mode: parseMode as "Markdown" }),
+        }),
+      );
     } catch (error) {
       console.error("Agent error:", error);
       await ctx.reply(
@@ -126,11 +128,13 @@ export function createTelegramBot(): Bot {
 
       await ensureVaultPushed();
 
-      await ctx.reply(
-        agentResponse.result || "Voice note logged and processed.",
-        {
-          parse_mode: "Markdown",
-        }
+      await sendWithMarkdownFallback((parseMode) =>
+        ctx.reply(
+          agentResponse.result || "Voice note logged and processed.",
+          {
+            ...(parseMode && { parse_mode: parseMode as "Markdown" }),
+          },
+        ),
       );
     } catch (error) {
       console.error("Voice message error:", error);
@@ -152,6 +156,27 @@ export function createTelegramBot(): Bot {
   return bot;
 }
 
+async function sendWithMarkdownFallback(
+  sendFn: (parseMode?: string) => Promise<unknown>,
+): Promise<void> {
+  try {
+    await sendFn("Markdown");
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("can't parse entities")
+    ) {
+      console.warn(
+        "Markdown parse failed, retrying without parse_mode:",
+        error.message,
+      );
+      await sendFn(undefined);
+    } else {
+      throw error;
+    }
+  }
+}
+
 export async function sendTelegramMessage(text: string): Promise<void> {
   if (!botInstance) {
     console.error("Telegram bot not initialized");
@@ -159,9 +184,11 @@ export async function sendTelegramMessage(text: string): Promise<void> {
   }
 
   try {
-    await botInstance.api.sendMessage(env.allowedTelegramUserId, text, {
-      parse_mode: "Markdown",
-    });
+    await sendWithMarkdownFallback((parseMode) =>
+      botInstance!.api.sendMessage(env.allowedTelegramUserId, text, {
+        ...(parseMode && { parse_mode: parseMode as "Markdown" }),
+      }),
+    );
   } catch (error) {
     console.error("Failed to send Telegram message:", error);
   }
