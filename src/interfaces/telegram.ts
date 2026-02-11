@@ -11,6 +11,20 @@ import { join } from "node:path";
 
 let botInstance: Bot | null = null;
 
+/** Sends "typing..." indicator every 4s until stopped. Returns a stop function. */
+function startTypingIndicator(ctx: Context): () => void {
+  let active = true;
+  const send = () => ctx.replyWithChatAction("typing").catch(() => {});
+  send();
+  const interval = setInterval(() => {
+    if (active) send();
+  }, 4000);
+  return () => {
+    active = false;
+    clearInterval(interval);
+  };
+}
+
 export function createTelegramBot(): Bot {
   const bot = new Bot(env.telegramBotToken);
   botInstance = bot;
@@ -52,11 +66,7 @@ export function createTelegramBot(): Bot {
     const externalId = `telegram:${ctx.from!.id}`;
     const userMessage = ctx.message.text;
 
-    // Send immediate acknowledgment
-    await ctx.reply("Got it, working on it...");
-
-    // Send typing indicator
-    await ctx.replyWithChatAction("typing");
+    const stopTyping = startTypingIndicator(ctx);
 
     try {
       const systemContext = buildSystemContext("message");
@@ -69,12 +79,15 @@ export function createTelegramBot(): Bot {
 
       await ensureVaultPushed();
 
+      stopTyping();
+
       await sendWithMarkdownFallback((parseMode) =>
         ctx.reply(response.result || "Done.", {
           ...(parseMode && { parse_mode: parseMode as "Markdown" }),
         }),
       );
     } catch (error) {
+      stopTyping();
       console.error("Agent error:", error);
       await ctx.reply(
         `Error: ${error instanceof Error ? error.message : "Unknown error"}`
@@ -87,9 +100,9 @@ export function createTelegramBot(): Bot {
     const voice = ctx.message.voice;
     let tempFilePath: string | null = null;
 
-    try {
-      await ctx.reply("🎤 Transcribing voice message...");
+    const stopTyping = startTypingIndicator(ctx);
 
+    try {
       // Download voice file
       const file = await ctx.api.getFile(voice.file_id);
       const fileUrl = `https://api.telegram.org/file/bot${env.telegramBotToken}/${file.file_path}`;
@@ -128,6 +141,8 @@ export function createTelegramBot(): Bot {
 
       await ensureVaultPushed();
 
+      stopTyping();
+
       await sendWithMarkdownFallback((parseMode) =>
         ctx.reply(
           agentResponse.result || "Voice note logged and processed.",
@@ -137,6 +152,7 @@ export function createTelegramBot(): Bot {
         ),
       );
     } catch (error) {
+      stopTyping();
       console.error("Voice message error:", error);
       await ctx.reply(
         `Error processing voice message: ${error instanceof Error ? error.message : "Unknown error"}`
@@ -174,6 +190,15 @@ async function sendWithMarkdownFallback(
     } else {
       throw error;
     }
+  }
+}
+
+export async function sendTelegramTypingIndicator(): Promise<void> {
+  if (!botInstance) return;
+  try {
+    await botInstance.api.sendChatAction(env.allowedTelegramUserId, "typing");
+  } catch (error) {
+    console.error("Failed to send typing indicator:", error);
   }
 }
 

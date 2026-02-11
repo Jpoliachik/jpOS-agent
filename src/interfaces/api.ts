@@ -8,7 +8,7 @@ import {
   ensureVaultPushed,
 } from "../obsidian.js";
 import type { VaultPushResult } from "../obsidian.js";
-import { sendTelegramMessage } from "./telegram.js";
+import { sendTelegramMessage, sendTelegramTypingIndicator } from "./telegram.js";
 import { buildSystemContext } from "../instructions.js";
 
 async function processVoiceNoteAsync(transcript: string): Promise<void> {
@@ -115,8 +115,8 @@ export async function createApiServer() {
         : undefined;
 
       try {
-        // Send immediate acknowledgment to Telegram
-        await sendTelegramMessage("Got your voice note, working on it...");
+        // Send typing indicator to Telegram while processing
+        await sendTelegramTypingIndicator();
 
         // 1. Log to Obsidian vault
         const { filePath, isDuplicate } = await appendVoiceNote({ transcript, timestamp, duration, id, createdAt });
