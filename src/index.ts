@@ -2,9 +2,13 @@ import { env } from "./config.js";
 import { createTelegramBot } from "./interfaces/telegram.js";
 import { createApiServer } from "./interfaces/api.js";
 import { startCronJobs } from "./cron.js";
+import { ensureVaultCloned } from "./obsidian.js";
 
 async function main() {
   console.log("Starting jpOS Agent...");
+
+  // Clone/init vault before accepting any requests
+  await ensureVaultCloned();
 
   // Start Telegram bot
   const bot = createTelegramBot();

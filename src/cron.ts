@@ -2,17 +2,19 @@ import cron from "node-cron";
 import { runAgent } from "./agent.js";
 import { sendTelegramMessage } from "./interfaces/telegram.js";
 import { buildSystemContext } from "./instructions.js";
+import { withVaultSync } from "./obsidian.js";
 
 async function runDailyPrep(): Promise<void> {
   console.log("Running daily prep job...");
 
   try {
-    const systemContext = buildSystemContext("daily-prep");
-
-    const response = await runAgent({
-      prompt: "Generate the daily prep briefing as described in your instructions.",
-      externalId: "cron:daily-prep",
-      systemContext,
+    const response = await withVaultSync(async () => {
+      const systemContext = buildSystemContext("daily-prep");
+      return runAgent({
+        prompt: "Generate the daily prep briefing as described in your instructions.",
+        externalId: "cron:daily-prep",
+        systemContext,
+      });
     });
 
     if (response.result) {
@@ -34,7 +36,6 @@ async function runDailyPrep(): Promise<void> {
 
 export function startCronJobs(): void {
   // Run at 4:00 AM Eastern time every day
-  // Cron format: minute hour day-of-month month day-of-week
   cron.schedule("0 4 * * *", runDailyPrep, {
     timezone: "America/New_York",
   });

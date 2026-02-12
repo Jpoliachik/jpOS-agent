@@ -2,42 +2,22 @@ import Fastify from "fastify";
 import bearerAuth from "@fastify/bearer-auth";
 import { env } from "../config.js";
 import { runAgent } from "../agent.js";
-import {
-  appendVoiceNote,
-  commitAndPush,
-  ensureVaultPushed,
-} from "../obsidian.js";
-import type { VaultPushResult } from "../obsidian.js";
+import { appendVoiceNote, withVaultSync } from "../obsidian.js";
 import { sendTelegramMessage, sendTelegramTypingIndicator } from "./telegram.js";
 import { buildSystemContext } from "../instructions.js";
 
 async function processVoiceNoteAsync(transcript: string): Promise<void> {
-  const systemContext = buildSystemContext("voice-note", { transcript });
-
-  const response = await runAgent({
-    prompt: "Process the voice note transcript described in your instructions.",
-    externalId: "api:voice-notes",
-    systemContext,
+  const result = await withVaultSync(async () => {
+    const systemContext = buildSystemContext("voice-note", { transcript });
+    const response = await runAgent({
+      prompt: "Process the voice note transcript described in your instructions.",
+      externalId: "api:voice-notes",
+      systemContext,
+    });
+    return response.result;
   });
 
-  const pushResult = await ensureVaultPushed();
-  const telegramMessage = buildVoiceNoteTelegramMessage(response.result, pushResult);
-  await sendTelegramMessage(telegramMessage);
-}
-
-function buildVoiceNoteTelegramMessage(
-  agentResult: string | undefined,
-  pushResult: VaultPushResult,
-): string {
-  let message = agentResult || "Voice note logged.";
-
-  if (pushResult.status === "pushed") {
-    message += "\n_Vault sync: safety net pushed changes_";
-  } else if (pushResult.status === "failed") {
-    message += `\n_Vault sync failed: ${pushResult.error}_`;
-  }
-
-  return message;
+  await sendTelegramMessage(result || "Voice note processed.");
 }
 
 export async function createApiServer() {
@@ -71,10 +51,12 @@ export async function createApiServer() {
       const externalId = `api:${clientId || "default"}`;
 
       try {
-        const response = await runAgent({
-          prompt,
-          externalId,
-          systemContext: context,
+        const response = await withVaultSync(async () => {
+          return runAgent({
+            prompt,
+            externalId,
+            systemContext: context,
+          });
         });
 
         return {
@@ -118,8 +100,10 @@ export async function createApiServer() {
         // Send typing indicator to Telegram while processing
         await sendTelegramTypingIndicator();
 
-        // 1. Log to Obsidian vault
-        const { filePath, isDuplicate } = await appendVoiceNote({ transcript, timestamp, duration, id, createdAt });
+        // Save voice note to vault
+        const { filePath, isDuplicate } = await withVaultSync(async () => {
+          return appendVoiceNote({ transcript, timestamp, duration, id, createdAt });
+        });
 
         if (isDuplicate) {
           return {
@@ -129,11 +113,9 @@ export async function createApiServer() {
           };
         }
 
-        const dateStr = new Date().toISOString().split("T")[0];
-        await commitAndPush(`Voice note ${dateStr}`);
         console.log(`Voice note saved to ${filePath}`);
 
-        // 2. Process with LLM async (don't block response)
+        // Process with agent async (don't block response)
         processVoiceNoteAsync(transcript).catch(async (err) => {
           console.error("Async voice note processing failed:", err);
           const errorMsg = err instanceof Error ? err.message : String(err);

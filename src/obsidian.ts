@@ -1,6 +1,6 @@
 /**
  * Obsidian vault Git operations
- * Manages cloning, pulling, writing notes, and pushing changes
+ * Manages cloning, syncing, writing notes, and pushing changes
  */
 
 import { exec } from "node:child_process";
@@ -11,6 +11,40 @@ import { homedir } from "node:os";
 
 const execAsync = promisify(exec);
 
+// ---------------------------------------------------------------------------
+// Mutex — serializes all vault git operations
+// ---------------------------------------------------------------------------
+
+class Mutex {
+  private queue: Array<() => void> = [];
+  private locked = false;
+
+  async acquire(): Promise<void> {
+    if (!this.locked) {
+      this.locked = true;
+      return;
+    }
+    return new Promise<void>((resolve) => {
+      this.queue.push(resolve);
+    });
+  }
+
+  release(): void {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift()!;
+      next();
+    } else {
+      this.locked = false;
+    }
+  }
+}
+
+const vaultMutex = new Mutex();
+
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
+
 function getObsidianRepoUrl(): string {
   const token = process.env.GITHUB_PAT;
   if (token) {
@@ -18,13 +52,15 @@ function getObsidianRepoUrl(): string {
   }
   return "git@github.com:Jpoliachik/obsidian.git";
 }
+
 export const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || "/data/obsidian-vault";
 export const JPOS_DIR = "jpOS";
 const VOICE_NOTES_DIR = join(JPOS_DIR, "voice-notes");
-
-// Hardcoded timezone for date/time conversion
-// TODO: Make configurable if needed for other timezones
 const TIMEZONE = "America/New_York";
+
+// ---------------------------------------------------------------------------
+// One-time setup
+// ---------------------------------------------------------------------------
 
 let sshConfigured = false;
 
@@ -45,11 +81,9 @@ async function ensureSshConfigured(): Promise<void> {
     mkdirSync(sshDir, { mode: 0o700 });
   }
 
-  // Decode base64 key and write
   const decodedKey = Buffer.from(sshKey, "base64").toString("utf-8");
   writeFileSync(keyPath, decodedKey, { mode: 0o600 });
 
-  // Add GitHub to known hosts
   const knownHostsPath = join(sshDir, "known_hosts");
   await execAsync(`ssh-keyscan github.com >> ${knownHostsPath}`);
 
@@ -64,8 +98,7 @@ async function configureGit(): Promise<void> {
 
 /**
  * Seed system/ directory in the vault with defaults from system-defaults/
- * if they don't already exist. This ensures the vault always has a baseline
- * set of system instructions that can be edited in Obsidian.
+ * if they don't already exist.
  */
 function seedSystemDefaults(): void {
   const defaultsDir = join(process.env.AGENT_CWD || "/app", "system-defaults");
@@ -74,11 +107,9 @@ function seedSystemDefaults(): void {
   const systemDir = join(VAULT_PATH, JPOS_DIR, "system");
   const skillsDir = join(systemDir, "skills");
 
-  // Ensure directories exist
   if (!existsSync(systemDir)) mkdirSync(systemDir, { recursive: true });
   if (!existsSync(skillsDir)) mkdirSync(skillsDir, { recursive: true });
 
-  // Copy each default file only if the vault doesn't already have it
   const seedFile = (relativePath: string) => {
     const src = join(defaultsDir, relativePath);
     const dest = join(systemDir, relativePath);
@@ -90,12 +121,10 @@ function seedSystemDefaults(): void {
     }
   };
 
-  // Seed top-level system files
   for (const file of readdirSync(defaultsDir).filter(f => f.endsWith(".md"))) {
     seedFile(file);
   }
 
-  // Seed skill files
   const skillsDefaultsDir = join(defaultsDir, "skills");
   if (existsSync(skillsDefaultsDir)) {
     for (const file of readdirSync(skillsDefaultsDir).filter(f => f.endsWith(".md"))) {
@@ -104,52 +133,108 @@ function seedSystemDefaults(): void {
   }
 }
 
-export async function ensureVaultReady(): Promise<void> {
+/**
+ * One-time vault initialization. Call at startup before accepting requests.
+ * Clones the vault if needed, cleans up any broken git state from previous crashes,
+ * and seeds default system files.
+ */
+export async function ensureVaultCloned(): Promise<void> {
   await ensureSshConfigured();
   await configureGit();
+
   if (!existsSync(VAULT_PATH)) {
     console.log("Cloning Obsidian vault...");
     await execAsync(`git clone ${getObsidianRepoUrl()} ${VAULT_PATH}`);
     console.log("Vault cloned successfully");
   } else {
-    await pullVault();
+    // Clean up any broken state from a previous crash
+    try { await execAsync(`git -C ${VAULT_PATH} rebase --abort`); } catch { /* no rebase in progress */ }
+    try { await execAsync(`git -C ${VAULT_PATH} merge --abort`); } catch { /* no merge in progress */ }
   }
 
-  // Seed system instruction defaults if missing
   seedSystemDefaults();
 }
 
-export async function pullVault(): Promise<void> {
+// ---------------------------------------------------------------------------
+// Internal git operations
+// ---------------------------------------------------------------------------
+
+async function pull(): Promise<void> {
   console.log("Pulling latest from Obsidian vault...");
 
-  // Abort any in-progress rebase or merge from a previous failed attempt
-  try {
-    await execAsync(`git -C ${VAULT_PATH} rebase --abort`);
-    console.log("Aborted in-progress rebase");
-  } catch {
-    // No rebase in progress — expected
-  }
-  try {
-    await execAsync(`git -C ${VAULT_PATH} merge --abort`);
-    console.log("Aborted in-progress merge");
-  } catch {
-    // No merge in progress — expected
-  }
-
-  // Commit any local changes so the working tree is clean
-  const { stdout: porcelain } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`);
-  if (porcelain.trim().length > 0) {
-    console.log("Found local changes in vault, auto-committing before pull...");
+  // Commit any dirty working tree so pull doesn't fail
+  const { stdout } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`);
+  if (stdout.trim()) {
+    console.log("Auto-committing local changes before pull...");
     await execAsync(`git -C ${VAULT_PATH} add -A`);
-    await execAsync(`git -C ${VAULT_PATH} commit -m "Auto-sync: local changes before pull"`);
+    await execAsync(`git -C ${VAULT_PATH} commit -m "Auto-commit before pull"`);
   }
 
-  // Use merge (not rebase) — simpler, no broken intermediate states
   await execAsync(`git -C ${VAULT_PATH} pull --no-rebase`);
 }
 
+async function commitAndPush(): Promise<void> {
+  // Commit if there are uncommitted changes
+  const { stdout: status } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`);
+  if (status.trim()) {
+    await execAsync(`git -C ${VAULT_PATH} add -A`);
+    await execAsync(`git -C ${VAULT_PATH} commit -m "jpOS agent sync"`);
+  }
+
+  // Push if there are unpushed commits
+  try {
+    const { stdout: unpushed } = await execAsync(`git -C ${VAULT_PATH} log @{u}..HEAD --oneline`);
+    if (unpushed.trim()) {
+      await execAsync(`git -C ${VAULT_PATH} push`);
+      console.log("Vault changes pushed");
+    }
+  } catch {
+    // No upstream tracking or other issue — try pushing anyway
+    await execAsync(`git -C ${VAULT_PATH} push`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Pull → run fn → commit + push, all serialized behind a mutex.
+ * This is the only way callers should interact with the vault for operations
+ * that read or write vault files.
+ */
+export async function withVaultSync<T>(fn: () => Promise<T>): Promise<T> {
+  await vaultMutex.acquire();
+  try {
+    await pull();
+    const result = await fn();
+    await commitAndPush();
+    return result;
+  } catch (error) {
+    console.error("withVaultSync error:", error);
+    // Auto-commit locally so the working tree is clean for next operation,
+    // but don't push partial work
+    try {
+      const { stdout } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`);
+      if (stdout.trim()) {
+        await execAsync(`git -C ${VAULT_PATH} add -A`);
+        await execAsync(`git -C ${VAULT_PATH} commit -m "Auto-commit: error recovery"`);
+      }
+    } catch (cleanupErr) {
+      console.error("Error during cleanup:", cleanupErr);
+    }
+    throw error;
+  } finally {
+    vaultMutex.release();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Voice notes
+// ---------------------------------------------------------------------------
+
 function getDateString(date: Date = new Date()): string {
-  return date.toLocaleDateString("en-CA", { timeZone: TIMEZONE }); // en-CA gives YYYY-MM-DD format
+  return date.toLocaleDateString("en-CA", { timeZone: TIMEZONE });
 }
 
 function getTimeString(date: Date = new Date()): string {
@@ -180,23 +265,23 @@ interface AppendVoiceNoteResult {
   isDuplicate: boolean;
 }
 
-export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<AppendVoiceNoteResult> {
+/**
+ * Append a voice note entry to the daily markdown file.
+ * Pure file operation — must be called inside withVaultSync().
+ */
+export function appendVoiceNote(params: AppendVoiceNoteParams): AppendVoiceNoteResult {
   const { transcript, timestamp, duration, id, createdAt } = params;
-
-  await ensureVaultReady();
 
   const voiceNotesPath = join(VAULT_PATH, VOICE_NOTES_DIR);
   if (!existsSync(voiceNotesPath)) {
     mkdirSync(voiceNotesPath, { recursive: true });
   }
 
-  // Use createdAt date if provided, otherwise use today (in configured timezone)
   const noteDate = createdAt ? new Date(createdAt) : new Date();
   const dateStr = getDateString(noteDate);
   const timeStr = timestamp || getTimeString(noteDate);
   const filePath = join(voiceNotesPath, `${dateStr}.md`);
 
-  // Create file with header if it doesn't exist
   if (!existsSync(filePath)) {
     writeFileSync(filePath, `# Voice Notes - ${dateStr}\n\n`);
   }
@@ -210,7 +295,6 @@ export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<Ap
     }
   }
 
-  // Build entry with optional metadata
   let entry = `## ${timeStr}`;
   if (duration) {
     entry += ` (${formatDuration(duration)})`;
@@ -224,6 +308,10 @@ export async function appendVoiceNote(params: AppendVoiceNoteParams): Promise<Ap
 
   return { filePath, isDuplicate: false };
 }
+
+// ---------------------------------------------------------------------------
+// Vault readers
+// ---------------------------------------------------------------------------
 
 export function readVaultGuide(): string | null {
   const guidePath = join(VAULT_PATH, JPOS_DIR, "context", "vault-guide.md");
@@ -256,68 +344,4 @@ export function readContextFiles(): string {
   }
 
   return sections.join("\n\n");
-}
-
-export async function commitAndPush(message: string): Promise<void> {
-  console.log("Committing and pushing changes...");
-  await execAsync(`git -C ${VAULT_PATH} add -A`);
-  await execAsync(`git -C ${VAULT_PATH} commit -m "${message}"`);
-  await execAsync(`git -C ${VAULT_PATH} push`);
-  console.log("Changes pushed successfully");
-}
-
-export interface VaultSyncStatus {
-  hasUncommittedChanges: boolean;
-  hasUnpushedCommits: boolean;
-  isClean: boolean;
-}
-
-export async function getVaultSyncStatus(): Promise<VaultSyncStatus> {
-  const { stdout: porcelain } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`);
-  const hasUncommittedChanges = porcelain.trim().length > 0;
-
-  const { stdout: unpushed } = await execAsync(`git -C ${VAULT_PATH} log @{u}..HEAD --oneline`);
-  const hasUnpushedCommits = unpushed.trim().length > 0;
-
-  return {
-    hasUncommittedChanges,
-    hasUnpushedCommits,
-    isClean: !hasUncommittedChanges && !hasUnpushedCommits,
-  };
-}
-
-export interface VaultPushResult {
-  status: "already_clean" | "pushed" | "failed";
-  actions?: string[];
-  error?: string;
-}
-
-export async function ensureVaultPushed(): Promise<VaultPushResult> {
-  try {
-    const syncStatus = await getVaultSyncStatus();
-
-    if (syncStatus.isClean) {
-      return { status: "already_clean" };
-    }
-
-    const actions: string[] = [];
-
-    if (syncStatus.hasUncommittedChanges) {
-      await execAsync(`git -C ${VAULT_PATH} add -A`);
-      await execAsync(
-        `git -C ${VAULT_PATH} commit -m "Auto-sync: uncommitted changes from agent"`,
-      );
-      actions.push("committed uncommitted changes");
-    }
-
-    await execAsync(`git -C ${VAULT_PATH} push`);
-    actions.push("pushed to remote");
-
-    console.log(`Vault safety net: ${actions.join(", ")}`);
-    return { status: "pushed", actions };
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("Vault safety net failed:", errorMsg);
-    return { status: "failed", error: errorMsg };
-  }
 }
