@@ -122,8 +122,21 @@ export async function ensureVaultReady(): Promise<void> {
 export async function pullVault(): Promise<void> {
   console.log("Pulling latest from Obsidian vault...");
 
-  // Auto-commit any local changes before pulling to avoid
-  // "cannot pull with rebase: You have unstaged changes" errors
+  // Abort any in-progress rebase or merge from a previous failed attempt
+  try {
+    await execAsync(`git -C ${VAULT_PATH} rebase --abort`);
+    console.log("Aborted in-progress rebase");
+  } catch {
+    // No rebase in progress — expected
+  }
+  try {
+    await execAsync(`git -C ${VAULT_PATH} merge --abort`);
+    console.log("Aborted in-progress merge");
+  } catch {
+    // No merge in progress — expected
+  }
+
+  // Commit any local changes so the working tree is clean
   const { stdout: porcelain } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`);
   if (porcelain.trim().length > 0) {
     console.log("Found local changes in vault, auto-committing before pull...");
@@ -131,7 +144,8 @@ export async function pullVault(): Promise<void> {
     await execAsync(`git -C ${VAULT_PATH} commit -m "Auto-sync: local changes before pull"`);
   }
 
-  await execAsync(`git -C ${VAULT_PATH} pull --rebase`);
+  // Use merge (not rebase) — simpler, no broken intermediate states
+  await execAsync(`git -C ${VAULT_PATH} pull --no-rebase`);
 }
 
 function getDateString(date: Date = new Date()): string {
