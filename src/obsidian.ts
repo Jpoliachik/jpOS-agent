@@ -121,6 +121,16 @@ export async function ensureVaultReady(): Promise<void> {
 
 export async function pullVault(): Promise<void> {
   console.log("Pulling latest from Obsidian vault...");
+
+  // Auto-commit any local changes before pulling to avoid
+  // "cannot pull with rebase: You have unstaged changes" errors
+  const { stdout: porcelain } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`);
+  if (porcelain.trim().length > 0) {
+    console.log("Found local changes in vault, auto-committing before pull...");
+    await execAsync(`git -C ${VAULT_PATH} add -A`);
+    await execAsync(`git -C ${VAULT_PATH} commit -m "Auto-sync: local changes before pull"`);
+  }
+
   await execAsync(`git -C ${VAULT_PATH} pull --rebase`);
 }
 
