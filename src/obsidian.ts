@@ -198,17 +198,21 @@ async function commitAndPush(): Promise<void> {
 // Public API
 // ---------------------------------------------------------------------------
 
+const VAULT_SYNC_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 /**
  * Pull → run fn → commit + push, all serialized behind a mutex.
- * This is the only way callers should interact with the vault for operations
- * that read or write vault files.
+ * Times out after 5 minutes to prevent a hung agent from deadlocking everything.
  */
 export async function withVaultSync<T>(fn: () => Promise<T>): Promise<T> {
   await vaultMutex.acquire();
   try {
-    await pull();
-    const result = await fn();
-    await commitAndPush();
+    const result = await withTimeout(async () => {
+      await pull();
+      const fnResult = await fn();
+      await commitAndPush();
+      return fnResult;
+    }, VAULT_SYNC_TIMEOUT_MS);
     return result;
   } catch (error) {
     console.error("withVaultSync error:", error);
@@ -227,6 +231,19 @@ export async function withVaultSync<T>(fn: () => Promise<T>): Promise<T> {
   } finally {
     vaultMutex.release();
   }
+}
+
+function withTimeout<T>(fn: () => Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`withVaultSync timed out after ${ms / 1000}s`));
+    }, ms);
+
+    fn().then(
+      (result) => { clearTimeout(timer); resolve(result); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
