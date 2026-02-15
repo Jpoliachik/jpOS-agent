@@ -147,9 +147,14 @@ export async function ensureVaultCloned(): Promise<void> {
     await execAsync(`git clone ${getObsidianRepoUrl()} ${VAULT_PATH}`);
     console.log("Vault cloned successfully");
   } else {
-    // Clean up any broken state from a previous crash
-    try { await execAsync(`git -C ${VAULT_PATH} rebase --abort`); } catch { /* no rebase in progress */ }
-    try { await execAsync(`git -C ${VAULT_PATH} merge --abort`); } catch { /* no merge in progress */ }
+    // Hard-reset to remote to clean up any broken state from a previous crash
+    try {
+      await execAsync(`git -C ${VAULT_PATH} fetch origin`);
+      const { stdout: branch } = await execAsync(`git -C ${VAULT_PATH} rev-parse --abbrev-ref HEAD`);
+      await execAsync(`git -C ${VAULT_PATH} reset --hard origin/${branch.trim()}`);
+    } catch (err) {
+      console.warn("Startup vault reset failed (will retry on first sync):", err);
+    }
   }
 
   seedSystemDefaults();
@@ -159,71 +164,62 @@ export async function ensureVaultCloned(): Promise<void> {
 // Internal git operations
 // ---------------------------------------------------------------------------
 
+const GIT_OP_TIMEOUT_MS = 60_000; // 60s per git operation
+
+async function gitExec(cmd: string): Promise<string> {
+  const { stdout } = await execAsync(cmd, { timeout: GIT_OP_TIMEOUT_MS });
+  return stdout;
+}
+
+/**
+ * Hard-sync local vault to remote. Git (remote) is source of truth.
+ * Any dirty local state from a previous crash is discarded.
+ */
 async function pull(): Promise<void> {
-  console.log("Pulling latest from Obsidian vault...");
-
-  // Commit any dirty working tree so pull doesn't fail
-  const { stdout } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`);
-  if (stdout.trim()) {
-    console.log("Auto-committing local changes before pull...");
-    await execAsync(`git -C ${VAULT_PATH} add -A`);
-    await execAsync(`git -C ${VAULT_PATH} commit -m "Auto-commit before pull"`);
-  }
-
-  await execAsync(`git -C ${VAULT_PATH} pull --no-rebase`);
+  console.log("Syncing vault from remote...");
+  await gitExec(`git -C ${VAULT_PATH} fetch origin`);
+  const branch = (await gitExec(`git -C ${VAULT_PATH} rev-parse --abbrev-ref HEAD`)).trim();
+  await gitExec(`git -C ${VAULT_PATH} reset --hard origin/${branch}`);
+  console.log("Vault synced to remote");
 }
 
 async function commitAndPush(): Promise<void> {
-  // Commit if there are uncommitted changes
-  const { stdout: status } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`);
-  if (status.trim()) {
-    await execAsync(`git -C ${VAULT_PATH} add -A`);
-    await execAsync(`git -C ${VAULT_PATH} commit -m "jpOS agent sync"`);
+  const status = (await gitExec(`git -C ${VAULT_PATH} status --porcelain`)).trim();
+  if (!status) {
+    console.log("No vault changes to push");
+    return;
   }
 
-  // Push if there are unpushed commits
-  try {
-    const { stdout: unpushed } = await execAsync(`git -C ${VAULT_PATH} log @{u}..HEAD --oneline`);
-    if (unpushed.trim()) {
-      await execAsync(`git -C ${VAULT_PATH} push`);
-      console.log("Vault changes pushed");
-    }
-  } catch {
-    // No upstream tracking or other issue — try pushing anyway
-    await execAsync(`git -C ${VAULT_PATH} push`);
-  }
+  await gitExec(`git -C ${VAULT_PATH} add -A`);
+  await gitExec(`git -C ${VAULT_PATH} commit -m "jpOS agent sync"`);
+  await gitExec(`git -C ${VAULT_PATH} push`);
+  console.log("Vault changes pushed");
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-const VAULT_SYNC_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-
 /**
  * Pull → run fn → commit + push, all serialized behind a mutex.
- * Times out after 5 minutes to prevent a hung agent from deadlocking everything.
+ *
+ * Only git operations are time-bounded (60s each). The wrapped function
+ * (typically an agent run) is allowed to take as long as it needs — the
+ * previous 5-minute blanket timeout was the cause of daily-prep failures.
  */
 export async function withVaultSync<T>(fn: () => Promise<T>): Promise<T> {
   await vaultMutex.acquire();
   try {
-    const result = await withTimeout(async () => {
-      await pull();
-      const fnResult = await fn();
-      await commitAndPush();
-      return fnResult;
-    }, VAULT_SYNC_TIMEOUT_MS);
+    await pull();
+    const result = await fn();
+    await commitAndPush();
     return result;
   } catch (error) {
     console.error("withVaultSync error:", error);
-    // Auto-commit locally so the working tree is clean for next operation,
-    // but don't push partial work
+    // Reset to remote so the working tree is clean for the next operation.
     try {
-      const { stdout } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`);
-      if (stdout.trim()) {
-        await execAsync(`git -C ${VAULT_PATH} add -A`);
-        await execAsync(`git -C ${VAULT_PATH} commit -m "Auto-commit: error recovery"`);
-      }
+      const branch = (await gitExec(`git -C ${VAULT_PATH} rev-parse --abbrev-ref HEAD`)).trim();
+      await gitExec(`git -C ${VAULT_PATH} reset --hard origin/${branch}`);
     } catch (cleanupErr) {
       console.error("Error during cleanup:", cleanupErr);
     }
@@ -231,19 +227,6 @@ export async function withVaultSync<T>(fn: () => Promise<T>): Promise<T> {
   } finally {
     vaultMutex.release();
   }
-}
-
-function withTimeout<T>(fn: () => Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`withVaultSync timed out after ${ms / 1000}s`));
-    }, ms);
-
-    fn().then(
-      (result) => { clearTimeout(timer); resolve(result); },
-      (error) => { clearTimeout(timer); reject(error); },
-    );
-  });
 }
 
 // ---------------------------------------------------------------------------
