@@ -35,12 +35,12 @@ async function runDailyPrep(): Promise<void> {
 }
 
 export function startCronJobs(): void {
-  // Run at 4:00 AM Eastern time every day
-  cron.schedule("0 4 * * *", runDailyPrep, {
+  // Run at 6:30 AM Eastern time every day
+  cron.schedule("30 6 * * *", runDailyPrep, {
     timezone: "America/New_York",
   });
 
-  console.log("Cron jobs started: daily prep at 4:00 AM Eastern");
+  console.log("Cron jobs started: daily prep at 6:30 AM Eastern");
 }
 
 // Export for manual testing

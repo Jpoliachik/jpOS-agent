@@ -25,6 +25,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   for await (const message of query({
     prompt: fullPrompt,
     options: {
+      model: "claude-sonnet-4-6",
       allowedTools: [
         "Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch",
         "mcp__todoist__todoist_create_task",
