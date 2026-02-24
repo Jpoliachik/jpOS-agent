@@ -63,38 +63,38 @@ export async function createApiServer() {
     // Ramble: upload a recording for processing
     app.post("/ramble/recordings", async (request, reply) => {
       let audioBuffer: Buffer | null = null;
-      let metadataRaw: string | null = null;
+      let metadataValue: unknown = null;
 
       // Iterate all parts — handles metadata with Content-Type: application/json
-      // which @fastify/multipart may treat as a file-like part rather than a field
+      // which @fastify/multipart auto-parses into an object
       const parts = request.parts();
       for await (const part of parts) {
         if (part.type === "file" && part.fieldname === "audio") {
           audioBuffer = await part.toBuffer();
         } else if (part.fieldname === "metadata") {
           if (part.type === "file") {
-            metadataRaw = (await part.toBuffer()).toString("utf-8");
+            metadataValue = (await part.toBuffer()).toString("utf-8");
           } else {
-            metadataRaw = part.value as string;
+            metadataValue = part.value;
           }
         }
       }
 
       if (!audioBuffer) {
-        request.log.warn("No audio file in upload");
         return reply.status(400).send({ error: "audio file is required" });
       }
 
-      if (!metadataRaw) {
-        request.log.warn("No metadata field in upload");
+      if (!metadataValue) {
         return reply.status(400).send({ error: "metadata field is required" });
       }
 
+      // @fastify/multipart auto-parses JSON fields — accept string or object
       let metadata: { id: string; created_at: string; duration: number };
       try {
-        metadata = JSON.parse(metadataRaw);
+        metadata = typeof metadataValue === "string"
+          ? JSON.parse(metadataValue)
+          : metadataValue as typeof metadata;
       } catch {
-        request.log.warn({ metadataRaw }, "Invalid metadata JSON");
         return reply.status(400).send({ error: "Invalid metadata JSON" });
       }
 
