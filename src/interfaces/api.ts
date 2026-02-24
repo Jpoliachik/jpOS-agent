@@ -1,27 +1,16 @@
 import Fastify from "fastify";
+import multipart from "@fastify/multipart";
 import bearerAuth from "@fastify/bearer-auth";
 import { env } from "../config.js";
 import { runAgent } from "../agent.js";
-import { appendVoiceNote, withVaultSync } from "../obsidian.js";
-import { sendTelegramMessage, sendTelegramTypingIndicator } from "./telegram.js";
-import { buildSystemContext } from "../instructions.js";
-
-async function processVoiceNoteAsync(transcript: string): Promise<void> {
-  const result = await withVaultSync(async () => {
-    const systemContext = buildSystemContext("voice-note", { transcript });
-    const response = await runAgent({
-      prompt: "Process the voice note transcript described in your instructions.",
-      externalId: "api:voice-notes",
-      systemContext,
-    });
-    return response.result;
-  });
-
-  await sendTelegramMessage(result || "Voice note processed.");
-}
+import { withVaultSync } from "../obsidian.js";
+import { createJob, getJob, deleteJob } from "../ramble-jobs.js";
+import { processRecording, deleteRecordingAudio } from "../ramble.js";
 
 export async function createApiServer() {
   const server = Fastify({ logger: true });
+
+  await server.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
 
   // Health check (no auth required)
   server.get("/health", async () => {
@@ -71,70 +60,84 @@ export async function createApiServer() {
       }
     });
 
-    // Voice note processing endpoint
-    app.post<{
-      Body: {
-        id: string;
-        createdAt: string;
-        duration: number;
-        transcript: string;
-      };
-    }>("/voice-note", async (request, reply) => {
-      const { id, createdAt, duration, transcript } = request.body;
+    // Ramble: upload a recording for processing
+    app.post("/ramble/recordings", async (request, reply) => {
+      const audioFile = await request.file();
 
-      if (!transcript) {
-        return reply.status(400).send({ error: "transcript is required" });
+      if (!audioFile) {
+        return reply.status(400).send({ error: "No file uploaded" });
       }
 
-      // Format timestamp from createdAt
-      const timestamp = createdAt
-        ? new Date(createdAt).toLocaleTimeString("en-US", {
-            timeZone: "America/New_York",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true,
-          })
-        : undefined;
+      // Parse metadata from the multipart fields
+      const metadataField = audioFile.fields.metadata;
+      let metadata: { id: string; created_at: string; duration: number };
 
       try {
-        // Send typing indicator to Telegram while processing
-        await sendTelegramTypingIndicator();
-
-        // Save voice note to vault
-        const { filePath, isDuplicate } = await withVaultSync(async () => {
-          return appendVoiceNote({ transcript, timestamp, duration, id, createdAt });
-        });
-
-        if (isDuplicate) {
-          return {
-            result: "Duplicate voice note - already logged",
-            logged: false,
-            duplicate: true,
-          };
+        if (
+          metadataField &&
+          "value" in metadataField &&
+          typeof metadataField.value === "string"
+        ) {
+          metadata = JSON.parse(metadataField.value);
+        } else {
+          return reply.status(400).send({ error: "metadata field is required" });
         }
-
-        console.log(`Voice note saved to ${filePath}`);
-
-        // Process with agent async (don't block response)
-        processVoiceNoteAsync(transcript).catch(async (err) => {
-          console.error("Async voice note processing failed:", err);
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          await sendTelegramMessage(`Voice note agent failed: ${errorMsg}`).catch(() => {});
-        });
-
-        return {
-          logged: true,
-        };
-      } catch (error) {
-        console.error("Voice note error:", error);
-
-        // Still try to notify via Telegram about the error
-        await sendTelegramMessage(`Voice note processing failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-
-        return reply.status(500).send({
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+      } catch {
+        return reply.status(400).send({ error: "Invalid metadata JSON" });
       }
+
+      if (!metadata.id) {
+        return reply.status(400).send({ error: "metadata.id is required" });
+      }
+
+      // Create job (throws if duplicate)
+      try {
+        createJob(metadata.id);
+      } catch {
+        return reply.status(409).send({ error: "Recording already exists" });
+      }
+
+      const audioBuffer = await audioFile.toBuffer();
+
+      // Fire async — don't block response
+      processRecording({
+        id: metadata.id,
+        audioBuffer,
+        createdAt: metadata.created_at,
+        duration: metadata.duration,
+      }).catch((err) => {
+        console.error("processRecording unexpected error:", err);
+      });
+
+      return reply.status(202).send({
+        id: metadata.id,
+        status: "processing",
+      });
+    });
+
+    // Ramble: poll for recording status
+    app.get<{ Params: { id: string } }>("/ramble/recordings/:id", async (request, reply) => {
+      const job = getJob(request.params.id);
+
+      if (!job) {
+        return reply.status(404).send({ error: "Recording not found" });
+      }
+
+      return {
+        id: job.id,
+        status: job.status,
+        transcription: job.transcription,
+        agent_notes: job.agentNotes,
+        error: job.error,
+      };
+    });
+
+    // Ramble: delete a recording
+    app.delete<{ Params: { id: string } }>("/ramble/recordings/:id", async (request, reply) => {
+      const { id } = request.params;
+      deleteJob(id);
+      deleteRecordingAudio(id);
+      return reply.status(204).send();
     });
   });
 
