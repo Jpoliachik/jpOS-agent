@@ -5,7 +5,8 @@
  *   jpOS/system/soul.md            — agent identity & hard rules
  *   jpOS/system/instructions.md    — general action guidelines
  *   jpOS/system/skills/<name>.md   — per-skill prompts (voice-note, daily-prep, message)
- *   jpOS/context/*.md              — user context files (goals, focus, projects, etc.)
+ *   jpOS/context/*.md              — stable reference files (projects, people, goals, etc.)
+ *   jpOS/memory/YYYY-MM-DD.md      — daily memory entries (recent days loaded automatically)
  *
  * Template variables in .md files are replaced at load time:
  *   {{date}}        — today's date (YYYY-MM-DD, America/New_York)
@@ -17,6 +18,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { VAULT_PATH, JPOS_DIR } from "./obsidian.js";
+import { loadRecentMemory } from "./memory.js";
 
 const TIMEZONE = "America/New_York";
 
@@ -122,6 +124,7 @@ export function buildSystemContext(
   const soul = applyVars(loadSoul(), templateVars);
   const instructions = applyVars(loadInstructions(), templateVars);
   const context = loadContext();
+  const memory = loadRecentMemory();
   const skill = applyVars(loadSkill(skillName), templateVars);
 
   const parts: string[] = [
@@ -138,7 +141,11 @@ export function buildSystemContext(
   }
 
   if (context) {
-    parts.push("# Current Context", "", context, "");
+    parts.push("# Reference Context", "", context, "");
+  }
+
+  if (memory) {
+    parts.push("# Recent Memory", "", memory, "");
   }
 
   if (skill) {

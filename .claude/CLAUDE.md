@@ -11,7 +11,8 @@ Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 ## Architecture
 
 - `src/agent.ts` - Agent SDK wrapper with session management
-- `src/instructions.ts` - Loads system prompts & skills from Obsidian vault
+- `src/instructions.ts` - Loads system prompts, skills, and memory from Obsidian vault
+- `src/memory.ts` - Daily memory file reader (loads recent N days)
 - `src/interfaces/telegram.ts` - Telegram bot (grammy)
 - `src/interfaces/api.ts` - HTTP API (Fastify)
 - `src/mcp/todoist.ts` - Todoist MCP server
@@ -22,16 +23,28 @@ Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 All jpOS data lives under `jpOS/` in the Obsidian vault:
 
 - `jpOS/system/soul.md` — Agent identity, personality, hard rules
-- `jpOS/system/instructions.md` — General action guidelines (GitHub Issues, Todoist, vault notes, etc.)
+- `jpOS/system/instructions.md` — General action guidelines (GitHub Issues, Todoist, vault notes, memory, etc.)
 - `jpOS/system/skills/voice-note.md` — How to process voice note transcripts
 - `jpOS/system/skills/daily-prep.md` — Morning briefing prompt
 - `jpOS/system/skills/message.md` — How to handle direct messages
-- `jpOS/context/` — User context files (goals, focus, active-projects, people)
+- `jpOS/context/` — Stable reference files (projects, people, goals — no assumed filenames)
+- `jpOS/memory/` — Daily memory entries (`YYYY-MM-DD.md`), last 5 days loaded automatically
 - `jpOS/voice-notes/` — Daily voice note logs
 
-Template variables (`{{date}}`, `{{time}}`, `{{vault_path}}`, `{{transcript}}`) are replaced at load time.
+### Memory System
 
-Default versions of these files ship in `system-defaults/` and are seeded into the vault on first run (won't overwrite edits made in Obsidian).
+The agent writes timestamped entries to `jpOS/memory/YYYY-MM-DD.md` after each interaction.
+`src/memory.ts` loads the most recent 5 days of memory files into the system prompt as "Recent Memory".
+This replaces the need for a `current-focus.md` file — current focus is whatever's in recent memory.
+
+Stable, slow-changing info (projects, people, goals) stays in `jpOS/context/` as reference files.
+The code does not assume any specific context files exist — it loads whatever is present.
+
+### Template Variables
+
+`{{date}}`, `{{time}}`, `{{vault_path}}`, `{{transcript}}` are replaced at load time.
+
+Default versions of system files ship in `system-defaults/` and are seeded into the vault on first run (won't overwrite edits made in Obsidian). No context files are seeded — those are created organically by the agent or the user.
 
 ## API Endpoints
 
