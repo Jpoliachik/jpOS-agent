@@ -102,11 +102,15 @@ export async function createApiServer() {
         return reply.status(400).send({ error: "metadata.id is required" });
       }
 
-      // Create job (throws if duplicate)
-      try {
+      // Create or reset job (idempotent — re-uploading always reprocesses)
+      const existingJob = getJob(metadata.id);
+      if (existingJob) {
+        existingJob.status = "processing";
+        existingJob.error = undefined;
+        existingJob.transcription = undefined;
+        existingJob.agentNotes = undefined;
+      } else {
         createJob(metadata.id);
-      } catch {
-        return reply.status(409).send({ error: "Recording already exists" });
       }
 
       // Fire async — don't block response

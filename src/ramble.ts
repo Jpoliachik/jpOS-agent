@@ -13,6 +13,17 @@ import { completeJob, failJob } from "./ramble-jobs.js";
 import { sendTelegramMessage } from "./interfaces/telegram.js";
 
 const RECORDINGS_DIR = "/data/ramble-recordings";
+const TRANSCRIPTION_TIMEOUT_MS = 60_000; // 60 seconds
+const AGENT_TIMEOUT_MS = 5 * 60_000; // 5 minutes
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(message)), ms),
+    ),
+  ]);
+}
 
 interface ProcessRecordingParams {
   id: string;
@@ -26,17 +37,26 @@ export async function processRecording(params: ProcessRecordingParams): Promise<
 
   try {
     // 1. Save audio file
+    console.log(`[ramble:${id}] Saving audio file...`);
     if (!existsSync(RECORDINGS_DIR)) {
       mkdirSync(RECORDINGS_DIR, { recursive: true });
     }
     const audioPath = join(RECORDINGS_DIR, `${id}.m4a`);
     writeFileSync(audioPath, audioBuffer);
+    console.log(`[ramble:${id}] Audio saved (${audioBuffer.length} bytes)`);
 
-    // 2. Transcribe
-    const transcription = await transcribeAudio(audioPath);
+    // 2. Transcribe (60s timeout)
+    console.log(`[ramble:${id}] Starting transcription...`);
+    const transcription = await withTimeout(
+      transcribeAudio(audioPath),
+      TRANSCRIPTION_TIMEOUT_MS,
+      "Transcription timed out",
+    );
     const transcript = transcription.text;
+    console.log(`[ramble:${id}] Transcription complete (${transcript.length} chars)`);
 
     // 3. Save voice note to vault (separate sync so it persists even if agent fails)
+    console.log(`[ramble:${id}] Saving to vault...`);
     const timestamp = createdAt
       ? new Date(createdAt).toLocaleTimeString("en-US", {
           timeZone: "America/New_York",
@@ -49,27 +69,36 @@ export async function processRecording(params: ProcessRecordingParams): Promise<
     await withVaultSync(async () => {
       appendVoiceNote({ transcript, timestamp, duration, id, createdAt });
     });
+    console.log(`[ramble:${id}] Vault saved`);
 
-    // 4. Run agent processing
-    const result = await withVaultSync(async () => {
-      const systemContext = buildSystemContext("voice-note", { transcript });
-      const response = await runAgent({
-        prompt: "Process the voice note transcript described in your instructions.",
-        externalId: "api:voice-notes",
-        systemContext,
-      });
-      return response.result;
-    });
+    // 4. Run agent processing (5 min timeout)
+    console.log(`[ramble:${id}] Running agent...`);
+    const result = await withTimeout(
+      withVaultSync(async () => {
+        const systemContext = buildSystemContext("voice-note", { transcript });
+        const response = await runAgent({
+          prompt: "Process the voice note transcript described in your instructions.",
+          externalId: "api:voice-notes",
+          systemContext,
+        });
+        return response.result;
+      }),
+      AGENT_TIMEOUT_MS,
+      "Agent processing timed out",
+    );
+    console.log(`[ramble:${id}] Agent complete`);
 
     const agentNotes = result || "Voice note processed.";
 
     // 5. Mark job complete
     completeJob({ id, transcription: transcript, agentNotes });
+    console.log(`[ramble:${id}] Job completed successfully`);
 
     // 6. Notify via Telegram
     await sendTelegramMessage(agentNotes);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[ramble:${id}] Processing failed: ${errorMsg}`);
     failJob({ id, error: errorMsg });
     await sendTelegramMessage(`Ramble processing failed: ${errorMsg}`).catch(() => {});
   }
