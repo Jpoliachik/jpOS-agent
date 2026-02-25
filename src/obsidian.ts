@@ -158,6 +158,13 @@ export async function ensureVaultCloned(): Promise<void> {
   }
 
   seedSystemDefaults();
+
+  // Ensure memory directory exists for the agent to write daily entries
+  const memoryDir = join(VAULT_PATH, JPOS_DIR, "memory");
+  if (!existsSync(memoryDir)) {
+    mkdirSync(memoryDir, { recursive: true });
+    console.log("Created memory directory");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -309,39 +316,3 @@ export function appendVoiceNote(params: AppendVoiceNoteParams): AppendVoiceNoteR
   return { filePath, isDuplicate: false };
 }
 
-// ---------------------------------------------------------------------------
-// Vault readers
-// ---------------------------------------------------------------------------
-
-export function readVaultGuide(): string | null {
-  const guidePath = join(VAULT_PATH, JPOS_DIR, "context", "vault-guide.md");
-  try {
-    return readFileSync(guidePath, "utf-8");
-  } catch {
-    return null;
-  }
-}
-
-export function readContextFiles(): string {
-  const contextDir = join(VAULT_PATH, JPOS_DIR, "context");
-  if (!existsSync(contextDir)) {
-    return "";
-  }
-
-  const files = readdirSync(contextDir).filter((f) => f.endsWith(".md"));
-  if (files.length === 0) {
-    return "";
-  }
-
-  const sections: string[] = [];
-  for (const file of files) {
-    try {
-      const content = readFileSync(join(contextDir, file), "utf-8");
-      sections.push(`### ${file}\n${content}`);
-    } catch {
-      // Skip files that can't be read
-    }
-  }
-
-  return sections.join("\n\n");
-}
