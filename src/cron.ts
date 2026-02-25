@@ -4,6 +4,27 @@ import { sendTelegramMessage } from "./interfaces/telegram.js";
 import { buildSystemContext } from "./instructions.js";
 import { withVaultSync } from "./obsidian.js";
 
+const TIMEZONE = "America/New_York";
+const CRON_HOUR = 6;
+const CRON_MINUTE = 30;
+
+/** Track the last date (YYYY-MM-DD in ET) we successfully ran daily prep */
+let lastDailyPrepDate: string | null = null;
+
+function getTodayET(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: TIMEZONE });
+}
+
+function getCurrentHourMinuteET(): { hour: number; minute: number } {
+  const parts = new Date().toLocaleTimeString("en-US", {
+    timeZone: TIMEZONE,
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).split(":");
+  return { hour: parseInt(parts[0], 10), minute: parseInt(parts[1], 10) };
+}
+
 async function runDailyPrep(): Promise<void> {
   console.log("Running daily prep job...");
 
@@ -18,8 +39,13 @@ async function runDailyPrep(): Promise<void> {
     });
 
     if (response.result) {
-      await sendTelegramMessage(response.result);
-      console.log("Daily prep sent successfully");
+      const sent = await sendTelegramMessage(response.result);
+      if (sent) {
+        lastDailyPrepDate = getTodayET();
+        console.log("Daily prep sent successfully");
+      } else {
+        console.error("Daily prep generated but Telegram send FAILED");
+      }
     } else {
       console.error("Daily prep returned empty result");
       await sendTelegramMessage(
@@ -36,11 +62,22 @@ async function runDailyPrep(): Promise<void> {
 
 export function startCronJobs(): void {
   // Run at 6:30 AM Eastern time every day
-  cron.schedule("30 6 * * *", runDailyPrep, {
-    timezone: "America/New_York",
+  cron.schedule(`${CRON_MINUTE} ${CRON_HOUR} * * *`, runDailyPrep, {
+    timezone: TIMEZONE,
   });
 
   console.log("Cron jobs started: daily prep at 6:30 AM Eastern");
+
+  // Check if we missed today's daily prep (e.g., process restarted after 6:30 AM)
+  const { hour, minute } = getCurrentHourMinuteET();
+  const isPastCronTime = hour > CRON_HOUR || (hour === CRON_HOUR && minute > CRON_MINUTE);
+  if (isPastCronTime && lastDailyPrepDate !== getTodayET()) {
+    console.log("Missed today's daily prep — running now");
+    // Small delay to let the bot finish initializing
+    setTimeout(() => {
+      runDailyPrep().catch((err) => console.error("Makeup daily prep failed:", err));
+    }, 5_000);
+  }
 }
 
 // Export for manual testing

@@ -198,10 +198,10 @@ export async function sendTelegramTypingIndicator(): Promise<void> {
   }
 }
 
-export async function sendTelegramMessage(text: string): Promise<void> {
+export async function sendTelegramMessage(text: string): Promise<boolean> {
   if (!botInstance) {
-    console.error("Telegram bot not initialized");
-    return;
+    console.error("Telegram bot not initialized — message not sent:", text.slice(0, 100));
+    return false;
   }
 
   try {
@@ -210,7 +210,9 @@ export async function sendTelegramMessage(text: string): Promise<void> {
         ...(parseMode && { parse_mode: parseMode as "Markdown" }),
       }),
     );
+    return true;
   } catch (error) {
     console.error("Failed to send Telegram message:", error);
+    return false;
   }
 }

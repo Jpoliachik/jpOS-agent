@@ -16,6 +16,10 @@ async function main() {
     onStart: (botInfo) => {
       console.log(`Telegram bot started: @${botInfo.username}`);
     },
+  }).catch((error) => {
+    console.error("Telegram bot polling error:", error);
+    // Exit so Fly.io restarts us cleanly instead of running without a bot
+    process.exit(1);
   });
 
   // Start API server
