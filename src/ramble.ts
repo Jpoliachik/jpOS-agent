@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { transcribeAudio } from "./transcription.js";
-import { withVaultSync, appendVoiceNote } from "./obsidian.js";
+import { pushVaultChanges, appendVoiceNote } from "./obsidian.js";
 import { buildSystemContext } from "./instructions.js";
 import { runAgent } from "./agent.js";
 import { completeJob, failJob } from "./ramble-jobs.js";
@@ -55,7 +55,7 @@ export async function processRecording(params: ProcessRecordingParams): Promise<
     const transcript = transcription.text;
     console.log(`[ramble:${id}] Transcription complete (${transcript.length} chars)`);
 
-    // 3. Save voice note to vault (separate sync so it persists even if agent fails)
+    // 3. Save voice note to vault (push immediately so it persists even if agent fails)
     console.log(`[ramble:${id}] Saving to vault...`);
     const timestamp = createdAt
       ? new Date(createdAt).toLocaleTimeString("en-US", {
@@ -66,22 +66,21 @@ export async function processRecording(params: ProcessRecordingParams): Promise<
         })
       : undefined;
 
-    await withVaultSync(async () => {
-      appendVoiceNote({ transcript, timestamp, duration, id, createdAt });
-    });
+    appendVoiceNote({ transcript, timestamp, duration, id, createdAt });
+    await pushVaultChanges();
     console.log(`[ramble:${id}] Vault saved`);
 
     // 4. Run agent processing (5 min timeout)
     console.log(`[ramble:${id}] Running agent...`);
+    const systemContext = buildSystemContext("voice-note", { transcript });
     const result = await withTimeout(
-      withVaultSync(async () => {
-        const systemContext = buildSystemContext("voice-note", { transcript });
-        const response = await runAgent({
-          prompt: "Process the voice note transcript described in your instructions.",
-          externalId: "api:voice-notes",
-          systemContext,
-        });
-        return response.result;
+      runAgent({
+        prompt: "Process the voice note transcript described in your instructions.",
+        externalId: "api:voice-notes",
+        systemContext,
+      }).then(async (r) => {
+        await pushVaultChanges();
+        return r.result;
       }),
       AGENT_TIMEOUT_MS,
       "Agent processing timed out",

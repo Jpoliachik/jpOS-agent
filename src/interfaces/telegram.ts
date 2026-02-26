@@ -2,7 +2,7 @@ import { Bot, Context } from "grammy";
 import { env } from "../config.js";
 import { runAgent } from "../agent.js";
 import { clearSession } from "../sessions.js";
-import { withVaultSync, appendVoiceNote } from "../obsidian.js";
+import { pushVaultChanges, appendVoiceNote } from "../obsidian.js";
 import { transcribeAudio } from "../transcription.js";
 import { buildSystemContext } from "../instructions.js";
 import { writeFileSync, unlinkSync } from "node:fs";
@@ -69,15 +69,14 @@ export function createTelegramBot(): Bot {
     const stopTyping = startTypingIndicator(ctx);
 
     try {
-      const response = await withVaultSync(async () => {
-        const systemContext = buildSystemContext("message");
-        return runAgent({
-          prompt: userMessage,
-          externalId,
-          systemContext,
-        });
+      const systemContext = buildSystemContext("message");
+      const response = await runAgent({
+        prompt: userMessage,
+        externalId,
+        systemContext,
       });
 
+      await pushVaultChanges();
       stopTyping();
 
       await sendWithMarkdownFallback((parseMode) =>
@@ -115,27 +114,25 @@ export function createTelegramBot(): Bot {
       // Transcribe with Groq
       const transcription = await transcribeAudio(tempFilePath);
 
-      // Save voice note + process with agent, all inside vault sync
-      const agentResponse = await withVaultSync(async () => {
-        const { isDuplicate } = appendVoiceNote({
-          transcript: transcription.text,
-          duration: transcription.duration,
-        });
+      const { isDuplicate } = appendVoiceNote({
+        transcript: transcription.text,
+        duration: transcription.duration,
+      });
 
-        if (isDuplicate) {
-          return { result: "Duplicate voice note — already logged." };
-        }
-
+      let agentResponse: { result: string };
+      if (isDuplicate) {
+        agentResponse = { result: "Duplicate voice note — already logged." };
+      } else {
         const systemContext = buildSystemContext("voice-note", {
           transcript: transcription.text,
         });
-
-        return runAgent({
+        agentResponse = await runAgent({
           prompt: "Process the voice note transcript described in your instructions.",
           externalId: "api:voice-notes",
           systemContext,
         });
-      });
+        await pushVaultChanges();
+      }
 
       stopTyping();
 

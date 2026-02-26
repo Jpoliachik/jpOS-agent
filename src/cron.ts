@@ -2,11 +2,12 @@ import cron from "node-cron";
 import { runAgent } from "./agent.js";
 import { sendTelegramMessage } from "./interfaces/telegram.js";
 import { buildSystemContext } from "./instructions.js";
-import { withVaultSync } from "./obsidian.js";
+import { pushVaultChanges } from "./obsidian.js";
 
 const TIMEZONE = "America/New_York";
 const CRON_HOUR = 6;
 const CRON_MINUTE = 30;
+const DAILY_PREP_TIMEOUT_MS = 5 * 60_000; // 5 minutes
 
 /** Track the last date (YYYY-MM-DD in ET) we successfully ran daily prep */
 let lastDailyPrepDate: string | null = null;
@@ -29,14 +30,21 @@ async function runDailyPrep(): Promise<void> {
   console.log("Running daily prep job...");
 
   try {
-    const response = await withVaultSync(async () => {
-      const systemContext = buildSystemContext("daily-prep");
-      return runAgent({
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Daily prep timed out after 5 minutes")), DAILY_PREP_TIMEOUT_MS)
+    );
+
+    const systemContext = buildSystemContext("daily-prep");
+    const response = await Promise.race([
+      runAgent({
         prompt: "Generate the daily prep briefing as described in your instructions.",
         externalId: "cron:daily-prep",
         systemContext,
-      });
-    });
+      }),
+      timeoutPromise,
+    ]);
+
+    await pushVaultChanges();
 
     if (response.result) {
       const sent = await sendTelegramMessage(response.result);

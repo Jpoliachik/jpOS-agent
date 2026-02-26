@@ -3,7 +3,7 @@ import multipart from "@fastify/multipart";
 import bearerAuth from "@fastify/bearer-auth";
 import { env } from "../config.js";
 import { runAgent } from "../agent.js";
-import { withVaultSync } from "../obsidian.js";
+import { pushVaultChanges } from "../obsidian.js";
 import { createJob, getJob, deleteJob } from "../ramble-jobs.js";
 import { processRecording, deleteRecordingAudio } from "../ramble.js";
 
@@ -40,13 +40,13 @@ export async function createApiServer() {
       const externalId = `api:${clientId || "default"}`;
 
       try {
-        const response = await withVaultSync(async () => {
-          return runAgent({
-            prompt,
-            externalId,
-            systemContext: context,
-          });
+        const response = await runAgent({
+          prompt,
+          externalId,
+          systemContext: context,
         });
+
+        await pushVaultChanges();
 
         return {
           result: response.result,

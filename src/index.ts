@@ -2,7 +2,7 @@ import { env } from "./config.js";
 import { createTelegramBot } from "./interfaces/telegram.js";
 import { createApiServer } from "./interfaces/api.js";
 import { startCronJobs } from "./cron.js";
-import { ensureVaultCloned } from "./obsidian.js";
+import { ensureVaultCloned, startPeriodicSync } from "./obsidian.js";
 
 async function main() {
   console.log("Starting jpOS Agent...");
@@ -29,6 +29,9 @@ async function main() {
 
   // Start scheduled jobs
   startCronJobs();
+
+  // Start background vault sync (pull every hour)
+  startPeriodicSync();
 
   // Graceful shutdown
   const shutdown = async () => {

@@ -1,6 +1,6 @@
 /**
  * Obsidian vault Git operations
- * Manages cloning, syncing, writing notes, and pushing changes
+ * Simple model: pull periodically, push after writes.
  */
 
 import { exec } from "node:child_process";
@@ -10,36 +10,6 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 const execAsync = promisify(exec);
-
-// ---------------------------------------------------------------------------
-// Mutex — serializes all vault git operations
-// ---------------------------------------------------------------------------
-
-class Mutex {
-  private queue: Array<() => void> = [];
-  private locked = false;
-
-  async acquire(): Promise<void> {
-    if (!this.locked) {
-      this.locked = true;
-      return;
-    }
-    return new Promise<void>((resolve) => {
-      this.queue.push(resolve);
-    });
-  }
-
-  release(): void {
-    if (this.queue.length > 0) {
-      const next = this.queue.shift()!;
-      next();
-    } else {
-      this.locked = false;
-    }
-  }
-}
-
-const vaultMutex = new Mutex();
 
 // ---------------------------------------------------------------------------
 // Config
@@ -57,6 +27,8 @@ export const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || "/data/obsidian-vau
 export const JPOS_DIR = "jpOS";
 const VOICE_NOTES_DIR = join(JPOS_DIR, "voice-notes");
 const TIMEZONE = "America/New_York";
+const GIT_TIMEOUT_MS = 60_000;
+const PERIODIC_SYNC_INTERVAL_MS = 60 * 60_000; // 1 hour
 
 // ---------------------------------------------------------------------------
 // One-time setup
@@ -96,10 +68,6 @@ async function configureGit(): Promise<void> {
   await execAsync(`git config --global user.name "jpOS Agent"`);
 }
 
-/**
- * Seed system/ directory in the vault with defaults from system-defaults/
- * if they don't already exist.
- */
 function seedSystemDefaults(): void {
   const defaultsDir = join(process.env.AGENT_CWD || "/app", "system-defaults");
   if (!existsSync(defaultsDir)) return;
@@ -135,8 +103,6 @@ function seedSystemDefaults(): void {
 
 /**
  * One-time vault initialization. Call at startup before accepting requests.
- * Clones the vault if needed, cleans up any broken git state from previous crashes,
- * and seeds default system files.
  */
 export async function ensureVaultCloned(): Promise<void> {
   await ensureSshConfigured();
@@ -147,19 +113,11 @@ export async function ensureVaultCloned(): Promise<void> {
     await execAsync(`git clone ${getObsidianRepoUrl()} ${VAULT_PATH}`);
     console.log("Vault cloned successfully");
   } else {
-    // Hard-reset to remote to clean up any broken state from a previous crash
-    try {
-      await execAsync(`git -C ${VAULT_PATH} fetch origin`);
-      const { stdout: branch } = await execAsync(`git -C ${VAULT_PATH} rev-parse --abbrev-ref HEAD`);
-      await execAsync(`git -C ${VAULT_PATH} reset --hard origin/${branch.trim()}`);
-    } catch (err) {
-      console.warn("Startup vault reset failed (will retry on first sync):", err);
-    }
+    await pullVault();
   }
 
   seedSystemDefaults();
 
-  // Ensure memory directory exists for the agent to write daily entries
   const memoryDir = join(VAULT_PATH, JPOS_DIR, "memory");
   if (!existsSync(memoryDir)) {
     mkdirSync(memoryDir, { recursive: true });
@@ -168,72 +126,63 @@ export async function ensureVaultCloned(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Internal git operations
-// ---------------------------------------------------------------------------
-
-const GIT_OP_TIMEOUT_MS = 60_000; // 60s per git operation
-
-async function gitExec(cmd: string): Promise<string> {
-  const { stdout } = await execAsync(cmd, { timeout: GIT_OP_TIMEOUT_MS });
-  return stdout;
-}
-
-/**
- * Hard-sync local vault to remote. Git (remote) is source of truth.
- * Any dirty local state from a previous crash is discarded.
- */
-async function pull(): Promise<void> {
-  console.log("Syncing vault from remote...");
-  await gitExec(`git -C ${VAULT_PATH} fetch origin`);
-  const branch = (await gitExec(`git -C ${VAULT_PATH} rev-parse --abbrev-ref HEAD`)).trim();
-  await gitExec(`git -C ${VAULT_PATH} reset --hard origin/${branch}`);
-  console.log("Vault synced to remote");
-}
-
-async function commitAndPush(): Promise<void> {
-  const status = (await gitExec(`git -C ${VAULT_PATH} status --porcelain`)).trim();
-  if (!status) {
-    console.log("No vault changes to push");
-    return;
-  }
-
-  await gitExec(`git -C ${VAULT_PATH} add -A`);
-  await gitExec(`git -C ${VAULT_PATH} commit -m "jpOS agent sync"`);
-  await gitExec(`git -C ${VAULT_PATH} push`);
-  console.log("Vault changes pushed");
-}
-
-// ---------------------------------------------------------------------------
-// Public API
+// Pull / Push
 // ---------------------------------------------------------------------------
 
 /**
- * Pull → run fn → commit + push, all serialized behind a mutex.
- *
- * Only git operations are time-bounded (60s each). The wrapped function
- * (typically an agent run) is allowed to take as long as it needs — the
- * previous 5-minute blanket timeout was the cause of daily-prep failures.
+ * Pull from remote. Remote wins on any conflict (hard reset).
  */
-export async function withVaultSync<T>(fn: () => Promise<T>): Promise<T> {
-  await vaultMutex.acquire();
+export async function pullVault(): Promise<void> {
+  console.log("Pulling vault from remote...");
   try {
-    await pull();
-    const result = await fn();
-    await commitAndPush();
-    return result;
-  } catch (error) {
-    console.error("withVaultSync error:", error);
-    // Reset to remote so the working tree is clean for the next operation.
-    try {
-      const branch = (await gitExec(`git -C ${VAULT_PATH} rev-parse --abbrev-ref HEAD`)).trim();
-      await gitExec(`git -C ${VAULT_PATH} reset --hard origin/${branch}`);
-    } catch (cleanupErr) {
-      console.error("Error during cleanup:", cleanupErr);
-    }
-    throw error;
-  } finally {
-    vaultMutex.release();
+    await execAsync(`git -C ${VAULT_PATH} fetch origin`, { timeout: GIT_TIMEOUT_MS });
+    const { stdout: branch } = await execAsync(`git -C ${VAULT_PATH} rev-parse --abbrev-ref HEAD`, { timeout: GIT_TIMEOUT_MS });
+    await execAsync(`git -C ${VAULT_PATH} reset --hard origin/${branch.trim()}`, { timeout: GIT_TIMEOUT_MS });
+    console.log("Vault pulled");
+  } catch (err) {
+    console.warn("Vault pull failed (continuing):", err);
   }
+}
+
+/**
+ * Push any local changes to remote.
+ * If push is rejected, rebase (local wins on conflict) and retry once.
+ */
+export async function pushVaultChanges(): Promise<void> {
+  const { stdout: status } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`, { timeout: GIT_TIMEOUT_MS });
+  if (!status.trim()) {
+    return; // nothing to push
+  }
+
+  await execAsync(`git -C ${VAULT_PATH} add -A`, { timeout: GIT_TIMEOUT_MS });
+  await execAsync(`git -C ${VAULT_PATH} commit -m "jpOS agent sync"`, { timeout: GIT_TIMEOUT_MS });
+
+  try {
+    await execAsync(`git -C ${VAULT_PATH} push`, { timeout: GIT_TIMEOUT_MS });
+    console.log("Vault changes pushed");
+  } catch {
+    // Push rejected — rebase and retry (local edits win on conflict)
+    console.warn("Push rejected, rebasing...");
+    await execAsync(`git -C ${VAULT_PATH} pull --rebase -X ours`, { timeout: GIT_TIMEOUT_MS });
+    await execAsync(`git -C ${VAULT_PATH} push`, { timeout: GIT_TIMEOUT_MS });
+    console.log("Vault changes pushed (after rebase)");
+  }
+}
+
+/**
+ * Start background periodic sync. Pulls from remote every hour.
+ * Call once at startup.
+ */
+export function startPeriodicSync(): void {
+  setInterval(async () => {
+    try {
+      await pullVault();
+    } catch (err) {
+      console.error("Periodic vault sync failed:", err);
+    }
+  }, PERIODIC_SYNC_INTERVAL_MS);
+
+  console.log("Vault periodic sync started (every 1 hour)");
 }
 
 // ---------------------------------------------------------------------------
@@ -274,7 +223,7 @@ interface AppendVoiceNoteResult {
 
 /**
  * Append a voice note entry to the daily markdown file.
- * Pure file operation — must be called inside withVaultSync().
+ * Pure file operation — call pushVaultChanges() after to persist.
  */
 export function appendVoiceNote(params: AppendVoiceNoteParams): AppendVoiceNoteResult {
   const { transcript, timestamp, duration, id, createdAt } = params;
@@ -293,7 +242,6 @@ export function appendVoiceNote(params: AppendVoiceNoteParams): AppendVoiceNoteR
     writeFileSync(filePath, `# Voice Notes - ${dateStr}\n\n`);
   }
 
-  // Check for duplicate by ID
   if (id) {
     const existingContent = readFileSync(filePath, "utf-8");
     if (existingContent.includes(`id: ${id}`)) {
@@ -315,4 +263,3 @@ export function appendVoiceNote(params: AppendVoiceNoteParams): AppendVoiceNoteR
 
   return { filePath, isDuplicate: false };
 }
-

@@ -7,7 +7,7 @@
 import { createServer } from "node:http";
 
 const TODOIST_API_TOKEN = process.env.TODOIST_API_TOKEN;
-const TODOIST_API_BASE = "https://api.todoist.com/rest/v2";
+const TODOIST_API_BASE = "https://api.todoist.com/api/v1";
 
 interface TodoistTask {
   content: string;
@@ -23,24 +23,32 @@ async function todoistRequest(
   method: string = "GET",
   body?: unknown
 ): Promise<unknown> {
-  const response = await fetch(`${TODOIST_API_BASE}${endpoint}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${TODOIST_API_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15_000);
 
-  if (!response.ok) {
-    throw new Error(`Todoist API error: ${response.status} ${response.statusText}`);
+  try {
+    const response = await fetch(`${TODOIST_API_BASE}${endpoint}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${TODOIST_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Todoist API error: ${response.status} ${response.statusText}`);
+    }
+
+    if (response.status === 204) {
+      return { success: true };
+    }
+
+    return await response.json();
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  if (response.status === 204) {
-    return { success: true };
-  }
-
-  return response.json();
 }
 
 // MCP Protocol implementation
@@ -97,13 +105,15 @@ const tools = [
 async function handleToolCall(name: string, args: Record<string, unknown>): Promise<unknown> {
   switch (name) {
     case "todoist_list_tasks": {
-      let endpoint = "/tasks";
+      if (args.filter) {
+        // v1 uses a dedicated filter endpoint
+        return todoistRequest(`/tasks/by_filter?filter=${encodeURIComponent(args.filter as string)}`);
+      }
       const params = new URLSearchParams();
       if (args.project_id) params.append("project_id", args.project_id as string);
       if (args.label) params.append("label", args.label as string);
-      if (args.filter) params.append("filter", args.filter as string);
-      if (params.toString()) endpoint += `?${params.toString()}`;
-      return todoistRequest(endpoint);
+      const qs = params.toString();
+      return todoistRequest(qs ? `/tasks?${qs}` : "/tasks");
     }
 
     case "todoist_create_task": {
@@ -141,8 +151,10 @@ async function main() {
   });
 
   for await (const line of rl) {
+    let requestId: unknown = null;
     try {
       const request = JSON.parse(line);
+      requestId = request.id;
       let response: unknown;
 
       switch (request.method) {
@@ -158,12 +170,13 @@ async function main() {
           response = { tools };
           break;
 
-        case "tools/call":
+        case "tools/call": {
           const result = await handleToolCall(request.params.name, request.params.arguments || {});
           response = {
             content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
           };
           break;
+        }
 
         default:
           response = { error: { code: -32601, message: "Method not found" } };
@@ -174,7 +187,7 @@ async function main() {
       console.log(
         JSON.stringify({
           jsonrpc: "2.0",
-          id: null,
+          id: requestId,
           error: { code: -32603, message: error instanceof Error ? error.message : "Unknown error" },
         })
       );
