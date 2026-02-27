@@ -106,8 +106,8 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
   switch (name) {
     case "todoist_list_tasks": {
       if (args.filter) {
-        // v1 uses a dedicated filter endpoint
-        return todoistRequest(`/tasks/by_filter?filter=${encodeURIComponent(args.filter as string)}`);
+        // v1 uses a dedicated filter endpoint with `query` param (not `filter`)
+        return todoistRequest(`/tasks/filter?query=${encodeURIComponent(args.filter as string)}`);
       }
       const params = new URLSearchParams();
       if (args.project_id) params.append("project_id", args.project_id as string);
