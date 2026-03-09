@@ -23,4 +23,9 @@ export const env = {
   todoistApiToken: requireEnv("TODOIST_API_TOKEN"),
   groqApiKey: requireEnv("GROQ_API_KEY"),
   port: parseInt(process.env.PORT || "3000", 10),
+  // App Store Connect (optional - tools disabled if not set)
+  appStoreConnectKeyId: process.env.APP_STORE_CONNECT_KEY_ID || "",
+  appStoreConnectIssuerId: process.env.APP_STORE_CONNECT_ISSUER_ID || "",
+  appStoreConnectP8Key: process.env.APP_STORE_CONNECT_P8_KEY || "",
+  appStoreConnectVendorNumber: process.env.APP_STORE_CONNECT_VENDOR_NUMBER || "",
 };

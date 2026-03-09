@@ -22,29 +22,58 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
 
   const fullPrompt = systemContext ? `${systemContext}\n\n${prompt}` : prompt;
 
+  // Build MCP servers config
+  const mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }> = {
+    todoist: {
+      command: "node",
+      args: [process.env.MCP_TODOIST_PATH || "/app/dist/mcp/todoist.js"],
+      env: {
+        TODOIST_API_TOKEN: env.todoistApiToken,
+      },
+    },
+  };
+
+  // Build allowed tools list
+  const allowedTools = [
+    "Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch",
+    "mcp__todoist__todoist_create_task",
+    "mcp__todoist__todoist_list_tasks",
+    "mcp__todoist__todoist_complete_task",
+    "mcp__todoist__todoist_list_projects",
+  ];
+
+  // Conditionally add App Store Connect MCP server
+  if (env.appStoreConnectKeyId && env.appStoreConnectIssuerId && env.appStoreConnectP8Key) {
+    mcpServers.appstoreconnect = {
+      command: "node",
+      args: [process.env.MCP_APPSTORECONNECT_PATH || "/app/dist/mcp/appstoreconnect.js"],
+      env: {
+        APP_STORE_CONNECT_KEY_ID: env.appStoreConnectKeyId,
+        APP_STORE_CONNECT_ISSUER_ID: env.appStoreConnectIssuerId,
+        APP_STORE_CONNECT_P8_KEY: env.appStoreConnectP8Key,
+        APP_STORE_CONNECT_VENDOR_NUMBER: env.appStoreConnectVendorNumber,
+      },
+    };
+    allowedTools.push(
+      "mcp__appstoreconnect__appstore_list_apps",
+      "mcp__appstoreconnect__appstore_get_app",
+      "mcp__appstoreconnect__appstore_sales_report",
+      "mcp__appstoreconnect__appstore_analytics_request",
+      "mcp__appstoreconnect__appstore_analytics_reports",
+      "mcp__appstoreconnect__appstore_analytics_instances",
+      "mcp__appstoreconnect__appstore_analytics_download",
+    );
+  }
+
   for await (const message of query({
     prompt: fullPrompt,
     options: {
       model: "claude-sonnet-4-6",
-      allowedTools: [
-        "Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch",
-        "mcp__todoist__todoist_create_task",
-        "mcp__todoist__todoist_list_tasks",
-        "mcp__todoist__todoist_complete_task",
-        "mcp__todoist__todoist_list_projects",
-      ],
+      allowedTools,
       permissionMode: "acceptEdits",
       settingSources: ["project"],
       cwd: process.env.AGENT_CWD || "/app",
-      mcpServers: {
-        todoist: {
-          command: "node",
-          args: [process.env.MCP_TODOIST_PATH || "/app/dist/mcp/todoist.js"],
-          env: {
-            TODOIST_API_TOKEN: env.todoistApiToken,
-          },
-        },
-      },
+      mcpServers,
       ...(sessionId ? { resume: sessionId } : {}),
     },
   })) {
