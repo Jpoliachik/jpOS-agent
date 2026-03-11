@@ -61,6 +61,60 @@ export function createTelegramBot(): Bot {
     await ctx.reply("Agent is running.");
   });
 
+  // Handle photo messages
+  bot.on("message:photo", async (ctx) => {
+    const externalId = `telegram:${ctx.from!.id}`;
+    const caption = ctx.message.caption || "The user sent an image with no caption.";
+
+    // Get the largest photo (last in the array)
+    const photos = ctx.message.photo;
+    const photo = photos[photos.length - 1];
+
+    const stopTyping = startTypingIndicator(ctx);
+
+    let tempFilePath: string | null = null;
+    try {
+      // Download the photo
+      const file = await ctx.api.getFile(photo.file_id);
+      const fileUrl = `https://api.telegram.org/file/bot${env.telegramBotToken}/${file.file_path}`;
+
+      tempFilePath = join(tmpdir(), `photo-${Date.now()}.jpg`);
+      const response = await fetch(fileUrl);
+      const buffer = await response.arrayBuffer();
+      writeFileSync(tempFilePath, Buffer.from(buffer));
+
+      const systemContext = buildSystemContext("message");
+      const agentResponse = await runAgent({
+        prompt: `The user sent a photo. Read the image file at ${tempFilePath} to see it.\n\nTheir message: ${caption}`,
+        externalId,
+        systemContext,
+      });
+
+      await pushVaultChanges();
+      stopTyping();
+
+      await sendWithMarkdownFallback((parseMode) =>
+        ctx.reply(agentResponse.result || "Done.", {
+          ...(parseMode && { parse_mode: parseMode as "Markdown" }),
+        }),
+      );
+    } catch (error) {
+      stopTyping();
+      console.error("Photo message error:", error);
+      await ctx.reply(
+        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    } finally {
+      if (tempFilePath) {
+        try {
+          unlinkSync(tempFilePath);
+        } catch (e) {
+          console.error("Failed to delete temp file:", e);
+        }
+      }
+    }
+  });
+
   // Handle all text messages
   bot.on("message:text", async (ctx) => {
     const externalId = `telegram:${ctx.from!.id}`;
