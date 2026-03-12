@@ -21,6 +21,7 @@ export const env = {
   allowedTelegramUserId: parseInt(requireEnv("ALLOWED_TELEGRAM_USER_ID"), 10),
   apiBearerToken: requireEnv("API_BEARER_TOKEN"),
   todoistApiToken: requireEnv("TODOIST_API_TOKEN"),
+  linearApiKey: requireEnv("LINEAR_API_KEY"),
   groqApiKey: requireEnv("GROQ_API_KEY"),
   port: parseInt(process.env.PORT || "3000", 10),
   // App Store Connect (optional - tools disabled if not set)

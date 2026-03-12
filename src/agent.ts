@@ -65,6 +65,24 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     );
   }
 
+  // Add Linear MCP server
+  mcpServers.linear = {
+    command: "node",
+    args: [process.env.MCP_LINEAR_PATH || "/app/dist/mcp/linear.js"],
+    env: {
+      LINEAR_API_KEY: env.linearApiKey,
+    },
+  };
+  allowedTools.push(
+    "mcp__linear__linear_list_teams",
+    "mcp__linear__linear_search_issues",
+    "mcp__linear__linear_get_issue",
+    "mcp__linear__linear_create_issue",
+    "mcp__linear__linear_update_issue",
+    "mcp__linear__linear_add_comment",
+    "mcp__linear__linear_list_projects",
+  );
+
   for await (const message of query({
     prompt: fullPrompt,
     options: {
