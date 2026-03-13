@@ -70,7 +70,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     command: "node",
     args: [process.env.MCP_LINEAR_PATH || "/app/dist/mcp/linear.js"],
     env: {
-      LINEAR_API_KEY: env.linearApiKey,
+      LINEAR_API_KEYS: env.linearApiKeys,
     },
   };
   allowedTools.push(

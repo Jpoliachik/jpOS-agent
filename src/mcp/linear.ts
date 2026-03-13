@@ -2,16 +2,27 @@
 /**
  * Linear MCP Server
  * Provides tools for interacting with Linear's GraphQL API.
- * Supports multiple workspaces via a single API key.
+ * Supports multiple orgs via comma-separated API keys in LINEAR_API_KEYS.
  */
 
-const LINEAR_API_KEY = process.env.LINEAR_API_KEY;
 const LINEAR_API_URL = "https://api.linear.app/graphql";
 
-async function linearQuery(
-  query: string,
-  variables?: Record<string, unknown>,
-): Promise<unknown> {
+// Parse comma-separated keys
+const apiKeys = (process.env.LINEAR_API_KEYS || "")
+  .split(",")
+  .map((k) => k.trim())
+  .filter(Boolean);
+
+// Cache: team key -> API key, team ID -> API key
+const teamKeyToApiKey = new Map<string, string>();
+const teamIdToApiKey = new Map<string, string>();
+let mappingInitialized = false;
+
+async function linearQuery(params: {
+  query: string;
+  variables?: Record<string, unknown>;
+  apiKey: string;
+}): Promise<unknown> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15_000);
 
@@ -19,10 +30,10 @@ async function linearQuery(
     const response = await fetch(LINEAR_API_URL, {
       method: "POST",
       headers: {
-        Authorization: LINEAR_API_KEY!,
+        Authorization: params.apiKey,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ query, variables }),
+      body: JSON.stringify({ query: params.query, variables: params.variables }),
       signal: controller.signal,
     });
 
@@ -41,6 +52,56 @@ async function linearQuery(
   }
 }
 
+/** Query using the API key mapped to a team key. Falls back to trying all keys. */
+async function linearQueryForTeam(params: {
+  query: string;
+  variables?: Record<string, unknown>;
+  teamKey?: string;
+  teamId?: string;
+}): Promise<unknown> {
+  await ensureMapping();
+
+  const key =
+    (params.teamKey && teamKeyToApiKey.get(params.teamKey)) ||
+    (params.teamId && teamIdToApiKey.get(params.teamId));
+
+  if (key) {
+    return linearQuery({ query: params.query, variables: params.variables, apiKey: key });
+  }
+
+  // Unknown team — try each key until one works
+  for (const apiKey of apiKeys) {
+    try {
+      return await linearQuery({ query: params.query, variables: params.variables, apiKey });
+    } catch {
+      continue;
+    }
+  }
+  throw new Error("All Linear API keys failed for this request");
+}
+
+/** Build team -> API key mapping by querying each key's teams. */
+async function ensureMapping(): Promise<void> {
+  if (mappingInitialized) return;
+
+  for (const apiKey of apiKeys) {
+    try {
+      const data = (await linearQuery({
+        query: `query { teams { nodes { id, key } } }`,
+        apiKey,
+      })) as { teams: { nodes: Array<{ id: string; key: string }> } };
+
+      for (const team of data.teams.nodes) {
+        teamKeyToApiKey.set(team.key, apiKey);
+        teamIdToApiKey.set(team.id, apiKey);
+      }
+    } catch (err) {
+      console.error(`Failed to query teams for a Linear API key: ${err}`);
+    }
+  }
+  mappingInitialized = true;
+}
+
 // ---------------------------------------------------------------------------
 // Tool definitions
 // ---------------------------------------------------------------------------
@@ -48,7 +109,7 @@ async function linearQuery(
 const tools = [
   {
     name: "linear_list_teams",
-    description: "List all teams across workspaces you have access to. Use this first to find team IDs.",
+    description: "List all teams across all connected Linear orgs. Use this first to find team IDs and keys.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -157,28 +218,39 @@ async function handleToolCall(
 ): Promise<unknown> {
   switch (name) {
     case "linear_list_teams": {
-      const data = (await linearQuery(`
-        query {
-          teams {
-            nodes {
-              id
-              name
-              key
-              organization { name }
+      await ensureMapping();
+      const allTeams: Array<Record<string, unknown>> = [];
+
+      for (const apiKey of apiKeys) {
+        const data = (await linearQuery({
+          query: `
+            query {
+              teams {
+                nodes {
+                  id
+                  name
+                  key
+                  organization { name }
+                }
+              }
             }
-          }
-        }
-      `)) as { teams: { nodes: Array<Record<string, unknown>> } };
-      return data.teams.nodes;
+          `,
+          apiKey,
+        })) as { teams: { nodes: Array<Record<string, unknown>> } };
+        allTeams.push(...data.teams.nodes);
+      }
+
+      return allTeams;
     }
 
     case "linear_search_issues": {
       const limit = Math.min((args.limit as number) || 25, 50);
+      const teamKey = args.team_key as string | undefined;
 
       // Build filter object
       const filter: Record<string, unknown> = {};
-      if (args.team_key) {
-        filter.team = { key: { eq: args.team_key } };
+      if (teamKey) {
+        filter.team = { key: { eq: teamKey } };
       }
       if (args.assignee_name) {
         filter.assignee = { displayName: { containsIgnoreCase: args.assignee_name } };
@@ -187,97 +259,81 @@ async function handleToolCall(
         filter.state = { name: { eqIgnoreCase: args.status } };
       }
 
-      // If free-text query, use the search endpoint
-      if (args.query) {
-        const data = (await linearQuery(
-          `
-          query($query: String!, $limit: Int!) {
-            searchIssues(term: $query, first: $limit, filter: $filter) {
+      // If we know the team, query that org. Otherwise query all orgs.
+      if (teamKey) {
+        return searchIssuesWithKey({
+          query: args.query as string | undefined,
+          filter,
+          limit,
+          teamKey,
+        });
+      }
+
+      // No team specified — search across all orgs and merge results
+      await ensureMapping();
+      const allResults: unknown[] = [];
+      const seenKeys = new Set<string>();
+
+      for (const apiKey of apiKeys) {
+        if (seenKeys.has(apiKey)) continue;
+        seenKeys.add(apiKey);
+        try {
+          const results = await searchIssuesRaw({
+            query: args.query as string | undefined,
+            filter,
+            limit,
+            apiKey,
+          });
+          allResults.push(...results);
+        } catch {
+          continue;
+        }
+      }
+
+      return allResults.slice(0, limit);
+    }
+
+    case "linear_get_issue": {
+      const identifier = args.identifier as string;
+      const teamKey = identifier.split("-")[0];
+
+      const data = (await linearQueryForTeam({
+        query: `
+          query($filter: IssueFilter!) {
+            issues(filter: $filter, first: 1) {
               nodes {
                 id
                 identifier
                 title
+                description
                 priority
                 state { name }
-                assignee { displayName }
+                assignee { id, displayName }
                 team { key, name }
+                labels { nodes { name } }
+                project { name }
                 url
                 createdAt
                 updatedAt
-              }
-            }
-          }
-        `,
-          { query: args.query, limit, filter: Object.keys(filter).length > 0 ? filter : undefined },
-        )) as { searchIssues: { nodes: unknown[] } };
-        return data.searchIssues.nodes;
-      }
-
-      // Otherwise use filtered list
-      const data = (await linearQuery(
-        `
-        query($filter: IssueFilter, $limit: Int!) {
-          issues(filter: $filter, first: $limit, orderBy: updatedAt) {
-            nodes {
-              id
-              identifier
-              title
-              priority
-              state { name }
-              assignee { displayName }
-              team { key, name }
-              url
-              createdAt
-              updatedAt
-            }
-          }
-        }
-      `,
-        { filter: Object.keys(filter).length > 0 ? filter : undefined, limit },
-      )) as { issues: { nodes: unknown[] } };
-      return data.issues.nodes;
-    }
-
-    case "linear_get_issue": {
-      // Parse identifier like "MIT-123" into parts
-      const identifier = args.identifier as string;
-
-      const data = (await linearQuery(
-        `
-        query($filter: IssueFilter!) {
-          issues(filter: $filter, first: 1) {
-            nodes {
-              id
-              identifier
-              title
-              description
-              priority
-              state { name }
-              assignee { id, displayName }
-              team { key, name }
-              labels { nodes { name } }
-              project { name }
-              url
-              createdAt
-              updatedAt
-              comments {
-                nodes {
-                  body
-                  user { displayName }
-                  createdAt
+                comments {
+                  nodes {
+                    body
+                    user { displayName }
+                    createdAt
+                  }
                 }
               }
             }
           }
-        }
-      `,
-        {
+        `,
+        variables: {
           filter: {
             number: { eq: parseInt(identifier.split("-")[1]) },
-            team: { key: { eq: identifier.split("-")[0] } },
+            team: { key: { eq: teamKey } },
           },
         },
-      )) as { issues: { nodes: unknown[] } };
+        teamKey,
+      })) as { issues: { nodes: unknown[] } };
 
       if (data.issues.nodes.length === 0) {
         return { error: `Issue ${identifier} not found` };
@@ -286,8 +342,9 @@ async function handleToolCall(
     }
 
     case "linear_create_issue": {
+      const teamId = args.team_id as string;
       const input: Record<string, unknown> = {
-        teamId: args.team_id,
+        teamId,
         title: args.title,
       };
       if (args.description) input.description = args.description;
@@ -296,16 +353,17 @@ async function handleToolCall(
 
       // Resolve status name to state ID if provided
       if (args.status_name) {
-        const states = (await linearQuery(
-          `
-          query($teamId: String!) {
-            workflowStates(filter: { team: { id: { eq: $teamId } } }) {
-              nodes { id, name }
+        const states = (await linearQueryForTeam({
+          query: `
+            query($teamId: String!) {
+              workflowStates(filter: { team: { id: { eq: $teamId } } }) {
+                nodes { id, name }
+              }
             }
-          }
-        `,
-          { teamId: args.team_id },
-        )) as { workflowStates: { nodes: Array<{ id: string; name: string }> } };
+          `,
+          variables: { teamId },
+          teamId,
+        })) as { workflowStates: { nodes: Array<{ id: string; name: string }> } };
 
         const match = states.workflowStates.nodes.find(
           (s) => s.name.toLowerCase() === (args.status_name as string).toLowerCase(),
@@ -315,45 +373,48 @@ async function handleToolCall(
 
       // Resolve label names to IDs if provided
       if (args.label_names && (args.label_names as string[]).length > 0) {
-        const labels = (await linearQuery(
-          `
-          query($teamId: String!) {
-            issueLabels(filter: { team: { id: { eq: $teamId } } }) {
-              nodes { id, name }
+        const labels = (await linearQueryForTeam({
+          query: `
+            query($teamId: String!) {
+              issueLabels(filter: { team: { id: { eq: $teamId } } }) {
+                nodes { id, name }
+              }
             }
-          }
-        `,
-          { teamId: args.team_id },
-        )) as { issueLabels: { nodes: Array<{ id: string; name: string }> } };
+          `,
+          variables: { teamId },
+          teamId,
+        })) as { issueLabels: { nodes: Array<{ id: string; name: string }> } };
 
         const labelIds = (args.label_names as string[])
-          .map((name) => labels.issueLabels.nodes.find((l) => l.name.toLowerCase() === name.toLowerCase()))
+          .map((n) => labels.issueLabels.nodes.find((l) => l.name.toLowerCase() === n.toLowerCase()))
           .filter(Boolean)
           .map((l) => l!.id);
         if (labelIds.length > 0) input.labelIds = labelIds;
       }
 
-      const data = (await linearQuery(
-        `
-        mutation($input: IssueCreateInput!) {
-          issueCreate(input: $input) {
-            success
-            issue {
-              id
-              identifier
-              title
-              url
+      const data = (await linearQueryForTeam({
+        query: `
+          mutation($input: IssueCreateInput!) {
+            issueCreate(input: $input) {
+              success
+              issue {
+                id
+                identifier
+                title
+                url
+              }
             }
           }
-        }
-      `,
-        { input },
-      )) as { issueCreate: { success: boolean; issue: unknown } };
+        `,
+        variables: { input },
+        teamId,
+      })) as { issueCreate: { success: boolean; issue: unknown } };
 
       return data.issueCreate;
     }
 
     case "linear_update_issue": {
+      const issueId = args.issue_id as string;
       const input: Record<string, unknown> = {};
       if (args.title) input.title = args.title;
       if (args.description) input.description = args.description;
@@ -362,22 +423,22 @@ async function handleToolCall(
 
       // Resolve status name if provided
       if (args.status_name) {
-        // First get the issue's team to find valid states
-        const issueData = (await linearQuery(
-          `query($id: String!) { issue(id: $id) { team { id } } }`,
-          { id: args.issue_id },
-        )) as { issue: { team: { id: string } } };
+        const issueData = (await linearQueryForTeam({
+          query: `query($id: String!) { issue(id: $id) { team { id } } }`,
+          variables: { id: issueId },
+        })) as { issue: { team: { id: string } } };
 
-        const states = (await linearQuery(
-          `
-          query($teamId: String!) {
-            workflowStates(filter: { team: { id: { eq: $teamId } } }) {
-              nodes { id, name }
+        const states = (await linearQueryForTeam({
+          query: `
+            query($teamId: String!) {
+              workflowStates(filter: { team: { id: { eq: $teamId } } }) {
+                nodes { id, name }
+              }
             }
-          }
-        `,
-          { teamId: issueData.issue.team.id },
-        )) as { workflowStates: { nodes: Array<{ id: string; name: string }> } };
+          `,
+          variables: { teamId: issueData.issue.team.id },
+          teamId: issueData.issue.team.id,
+        })) as { workflowStates: { nodes: Array<{ id: string; name: string }> } };
 
         const match = states.workflowStates.nodes.find(
           (s) => s.name.toLowerCase() === (args.status_name as string).toLowerCase(),
@@ -385,73 +446,110 @@ async function handleToolCall(
         if (match) input.stateId = match.id;
       }
 
-      const data = (await linearQuery(
-        `
-        mutation($id: String!, $input: IssueUpdateInput!) {
-          issueUpdate(id: $id, input: $input) {
-            success
-            issue {
-              id
-              identifier
-              title
-              state { name }
-              url
+      const data = (await linearQueryForTeam({
+        query: `
+          mutation($id: String!, $input: IssueUpdateInput!) {
+            issueUpdate(id: $id, input: $input) {
+              success
+              issue {
+                id
+                identifier
+                title
+                state { name }
+                url
+              }
             }
           }
-        }
-      `,
-        { id: args.issue_id, input },
-      )) as { issueUpdate: { success: boolean; issue: unknown } };
+        `,
+        variables: { id: issueId, input },
+      })) as { issueUpdate: { success: boolean; issue: unknown } };
 
       return data.issueUpdate;
     }
 
     case "linear_add_comment": {
-      const data = (await linearQuery(
-        `
-        mutation($input: CommentCreateInput!) {
-          commentCreate(input: $input) {
-            success
-            comment {
-              id
-              body
-              user { displayName }
-              createdAt
+      const data = (await linearQueryForTeam({
+        query: `
+          mutation($input: CommentCreateInput!) {
+            commentCreate(input: $input) {
+              success
+              comment {
+                id
+                body
+                user { displayName }
+                createdAt
+              }
             }
           }
-        }
-      `,
-        { input: { issueId: args.issue_id, body: args.body } },
-      )) as { commentCreate: { success: boolean; comment: unknown } };
+        `,
+        variables: { input: { issueId: args.issue_id, body: args.body } },
+      })) as { commentCreate: { success: boolean; comment: unknown } };
 
       return data.commentCreate;
     }
 
     case "linear_list_projects": {
+      const teamKey = args.team_key as string | undefined;
       const filter: Record<string, unknown> = {};
-      if (args.team_key) {
-        filter.accessibleTeams = { some: { key: { eq: args.team_key } } };
+      if (teamKey) {
+        filter.accessibleTeams = { some: { key: { eq: teamKey } } };
       }
 
-      const data = (await linearQuery(
-        `
-        query($filter: ProjectFilter) {
-          projects(filter: $filter, first: 50) {
-            nodes {
-              id
-              name
-              state
-              teams { nodes { key, name } }
-              url
-              startDate
-              targetDate
+      if (teamKey) {
+        const data = (await linearQueryForTeam({
+          query: `
+            query($filter: ProjectFilter) {
+              projects(filter: $filter, first: 50) {
+                nodes {
+                  id
+                  name
+                  state
+                  teams { nodes { key, name } }
+                  url
+                  startDate
+                  targetDate
+                }
+              }
             }
-          }
+          `,
+          variables: { filter: Object.keys(filter).length > 0 ? filter : undefined },
+          teamKey,
+        })) as { projects: { nodes: unknown[] } };
+        return data.projects.nodes;
+      }
+
+      // No team — merge from all orgs
+      await ensureMapping();
+      const allProjects: unknown[] = [];
+      const seenKeys = new Set<string>();
+      for (const apiKey of apiKeys) {
+        if (seenKeys.has(apiKey)) continue;
+        seenKeys.add(apiKey);
+        try {
+          const data = (await linearQuery({
+            query: `
+              query {
+                projects(first: 50) {
+                  nodes {
+                    id
+                    name
+                    state
+                    teams { nodes { key, name } }
+                    url
+                    startDate
+                    targetDate
+                  }
+                }
+              }
+            `,
+            apiKey,
+          })) as { projects: { nodes: unknown[] } };
+          allProjects.push(...data.projects.nodes);
+        } catch {
+          continue;
         }
-      `,
-        { filter: Object.keys(filter).length > 0 ? filter : undefined },
-      )) as { projects: { nodes: unknown[] } };
-      return data.projects.nodes;
+      }
+      return allProjects;
     }
 
     default:
@@ -460,10 +558,90 @@ async function handleToolCall(
 }
 
 // ---------------------------------------------------------------------------
+// Search helpers
+// ---------------------------------------------------------------------------
+
+const ISSUE_FIELDS = `
+  id
+  identifier
+  title
+  priority
+  state { name }
+  assignee { displayName }
+  team { key, name }
+  url
+  createdAt
+  updatedAt
+`;
+
+async function searchIssuesRaw(params: {
+  query?: string;
+  filter: Record<string, unknown>;
+  limit: number;
+  apiKey: string;
+}): Promise<unknown[]> {
+  const hasFilter = Object.keys(params.filter).length > 0;
+
+  if (params.query) {
+    const data = (await linearQuery({
+      query: `
+        query($term: String!, $limit: Int!, $filter: IssueFilter) {
+          searchIssues(term: $term, first: $limit, filter: $filter) {
+            nodes { ${ISSUE_FIELDS} }
+          }
+        }
+      `,
+      variables: {
+        term: params.query,
+        limit: params.limit,
+        filter: hasFilter ? params.filter : undefined,
+      },
+      apiKey: params.apiKey,
+    })) as { searchIssues: { nodes: unknown[] } };
+    return data.searchIssues.nodes;
+  }
+
+  const data = (await linearQuery({
+    query: `
+      query($filter: IssueFilter, $limit: Int!) {
+        issues(filter: $filter, first: $limit, orderBy: updatedAt) {
+          nodes { ${ISSUE_FIELDS} }
+        }
+      }
+    `,
+    variables: {
+      filter: hasFilter ? params.filter : undefined,
+      limit: params.limit,
+    },
+    apiKey: params.apiKey,
+  })) as { issues: { nodes: unknown[] } };
+  return data.issues.nodes;
+}
+
+async function searchIssuesWithKey(params: {
+  query?: string;
+  filter: Record<string, unknown>;
+  limit: number;
+  teamKey: string;
+}): Promise<unknown[]> {
+  await ensureMapping();
+  const apiKey = teamKeyToApiKey.get(params.teamKey);
+  if (!apiKey) {
+    throw new Error(`Unknown team key: ${params.teamKey}. Use linear_list_teams to see available teams.`);
+  }
+  return searchIssuesRaw({ ...params, apiKey });
+}
+
+// ---------------------------------------------------------------------------
 // MCP stdio server
 // ---------------------------------------------------------------------------
 
 async function main() {
+  if (apiKeys.length === 0) {
+    console.error("LINEAR_API_KEYS env var is empty — no Linear orgs configured");
+    process.exit(1);
+  }
+
   const readline = await import("readline");
   const rl = readline.createInterface({
     input: process.stdin,
