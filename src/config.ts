@@ -15,6 +15,12 @@ if (process.env.GITHUB_PAT) {
   process.env.GITHUB_TOKEN = process.env.GITHUB_PAT;
 }
 
+// Ensure Google Workspace CLI env vars are set for headless gws usage.
+// Use file-based keyring backend since OS keyring is unavailable in containers.
+if (process.env.GOOGLE_WORKSPACE_CLI_TOKEN || process.env.GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE) {
+  process.env.GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND = process.env.GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND || "file";
+}
+
 export const env = {
   anthropicApiKey: requireEnv("ANTHROPIC_API_KEY"),
   telegramBotToken: requireEnv("TELEGRAM_BOT_TOKEN"),
@@ -29,4 +35,9 @@ export const env = {
   appStoreConnectIssuerId: process.env.APP_STORE_CONNECT_ISSUER_ID || "",
   appStoreConnectP8Key: process.env.APP_STORE_CONNECT_P8_KEY || "",
   appStoreConnectVendorNumber: process.env.APP_STORE_CONNECT_VENDOR_NUMBER || "",
+  // Google Workspace CLI (optional - gws calendar/gmail/drive commands available when set)
+  googleWorkspaceToken: process.env.GOOGLE_WORKSPACE_CLI_TOKEN || "",
+  googleWorkspaceCredentialsFile: process.env.GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE || "",
+  googleWorkspaceClientId: process.env.GOOGLE_WORKSPACE_CLI_CLIENT_ID || "",
+  googleWorkspaceClientSecret: process.env.GOOGLE_WORKSPACE_CLI_CLIENT_SECRET || "",
 };

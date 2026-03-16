@@ -2,6 +2,11 @@
 
 Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 
+## Integration Philosophy
+
+- **Prefer CLI + skills over MCP** for new integrations. CLI tools (invoked via Bash) are more token-efficient than MCP tool definitions and avoid context window bloat. Add usage instructions to the system prompt (skills) rather than registering MCP tool schemas.
+- MCP servers are still used for Todoist, Linear, and App Store Connect (legacy).
+
 ## Claude Agent SDK Notes
 
 - **Always use `permissionMode: "acceptEdits"`** - Using `"bypassPermissions"` causes the SDK to fail with "Claude Code process exited with code 1"
@@ -82,3 +87,14 @@ Health check (no auth).
 - Voice notes saved to `jpOS/voice-notes/YYYY-MM-DD.md`
 - Uses GitHub PAT (GITHUB_PAT secret) for push access
 - **Timezone: `America/New_York`** - hardcoded in `src/obsidian.ts` for date/time conversion
+
+## Google Workspace CLI (`gws`)
+
+Google Calendar (and other Workspace APIs) are accessed via the `gws` CLI, not MCP. The agent calls `gws` commands through the Bash tool.
+
+- **Package:** `@googleworkspace/cli` (installed globally in Docker image)
+- **Auth:** Headless via env vars — `GOOGLE_WORKSPACE_CLI_TOKEN` (access token) or `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` (OAuth JSON)
+- **Keyring:** Uses file backend (`GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND=file`) in containers
+- **Calendar commands:** `gws calendar +agenda`, `gws calendar +insert`, `gws calendar events list/delete`
+- **Skills/instructions:** Calendar usage documented in `system-defaults/instructions.md` and `system-defaults/skills/daily-prep.md`
+- **Setup required on Fly.io:** Set `GOOGLE_WORKSPACE_CLI_TOKEN` or `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` + `GOOGLE_WORKSPACE_CLI_CLIENT_ID` / `GOOGLE_WORKSPACE_CLI_CLIENT_SECRET` as Fly secrets
