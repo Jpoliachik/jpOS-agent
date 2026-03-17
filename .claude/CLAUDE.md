@@ -93,8 +93,8 @@ Health check (no auth).
 Google Calendar (and other Workspace APIs) are accessed via the `gws` CLI, not MCP. The agent calls `gws` commands through the Bash tool.
 
 - **Package:** `@googleworkspace/cli` (installed globally in Docker image)
-- **Auth:** Headless via env vars — `GOOGLE_WORKSPACE_CLI_TOKEN` (access token) or `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` (OAuth JSON)
+- **Auth:** Credentials file auto-generated at startup from Fly secrets. `config.ts` takes `GOOGLE_WORKSPACE_CLI_REFRESH_TOKEN` + `CLIENT_ID` + `CLIENT_SECRET` and writes `/data/gws-credentials.json`, then sets `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` automatically. Falls back to `GOOGLE_WORKSPACE_CLI_TOKEN` (short-lived access token) if refresh token isn't set.
 - **Keyring:** Uses file backend (`GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND=file`) in containers
 - **Calendar commands:** `gws calendar +agenda`, `gws calendar +insert`, `gws calendar events list/delete`
 - **Skills/instructions:** Calendar usage documented in `system-defaults/instructions.md` and `system-defaults/skills/daily-prep.md`
-- **Setup required on Fly.io:** Set `GOOGLE_WORKSPACE_CLI_TOKEN` or `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` + `GOOGLE_WORKSPACE_CLI_CLIENT_ID` / `GOOGLE_WORKSPACE_CLI_CLIENT_SECRET` as Fly secrets
+- **Setup on Fly.io:** `fly secrets set GOOGLE_WORKSPACE_CLI_CLIENT_ID=... GOOGLE_WORKSPACE_CLI_CLIENT_SECRET=... GOOGLE_WORKSPACE_CLI_REFRESH_TOKEN=...`
