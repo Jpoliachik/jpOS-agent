@@ -67,13 +67,13 @@ function createStreamingDraft(chatId: number, bot: Bot) {
     }
   };
 
-  const finalize = () => {
+  const finalize = async () => {
     if (pendingTimer) {
       clearTimeout(pendingTimer);
       pendingTimer = null;
     }
-    // Send empty draft to clear the draft bubble before final message
-    bot.api.raw.sendMessageDraft({ chat_id: chatId, draft_id: draftId, text: "" }).catch(() => {});
+    // Await draft clear so it completes before the final message is sent
+    await bot.api.raw.sendMessageDraft({ chat_id: chatId, draft_id: draftId, text: "" }).catch(() => {});
   };
 
   return { onTextDelta, finalize };
@@ -147,7 +147,7 @@ export function createTelegramBot(): Bot {
       });
 
       await pushVaultChanges();
-      finalize();
+      await finalize();
       stopTyping();
 
       await sendWithMarkdownFallback((parseMode) =>
@@ -156,7 +156,7 @@ export function createTelegramBot(): Bot {
         }),
       );
     } catch (error) {
-      finalize();
+      await finalize();
       stopTyping();
       console.error("Photo message error:", error);
       await ctx.reply(
@@ -191,7 +191,7 @@ export function createTelegramBot(): Bot {
       });
 
       await pushVaultChanges();
-      finalize();
+      await finalize();
       stopTyping();
 
       await sendWithMarkdownFallback((parseMode) =>
@@ -200,7 +200,7 @@ export function createTelegramBot(): Bot {
         }),
       );
     } catch (error) {
-      finalize();
+      await finalize();
       stopTyping();
       console.error("Agent error:", error);
       await ctx.reply(
