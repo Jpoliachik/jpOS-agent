@@ -1,34 +1,14 @@
 import cron from "node-cron";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { runAgent } from "./agent.js";
 import { sendTelegramMessage } from "./interfaces/telegram.js";
 import { buildSystemContext } from "./instructions.js";
 import { pushVaultChanges } from "./obsidian.js";
+import { getState, setState } from "./state.js";
 
 const TIMEZONE = "America/New_York";
 const CRON_HOUR = 6;
 const CRON_MINUTE = 30;
 const DAILY_PREP_TIMEOUT_MS = 5 * 60_000; // 5 minutes
-
-const STATE_DIR = "/data";
-const LAST_DAILY_PREP_FILE = `${STATE_DIR}/last-daily-prep-date`;
-
-function readLastDailyPrepDate(): string | null {
-  try {
-    return readFileSync(LAST_DAILY_PREP_FILE, "utf-8").trim() || null;
-  } catch {
-    return null;
-  }
-}
-
-function writeLastDailyPrepDate(date: string): void {
-  try {
-    mkdirSync(STATE_DIR, { recursive: true });
-    writeFileSync(LAST_DAILY_PREP_FILE, date, "utf-8");
-  } catch (err) {
-    console.error("Failed to persist last daily prep date:", err);
-  }
-}
 
 function getTodayET(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: TIMEZONE });
@@ -67,7 +47,7 @@ async function runDailyPrep(): Promise<void> {
     if (response.result) {
       const sent = await sendTelegramMessage(response.result);
       if (sent) {
-        writeLastDailyPrepDate(getTodayET());
+        setState("lastDailyPrepDate", getTodayET());
         console.log("Daily prep sent successfully");
       } else {
         console.error("Daily prep generated but Telegram send FAILED");
@@ -97,7 +77,7 @@ export function startCronJobs(): void {
   // Check if we missed today's daily prep (e.g., process restarted after 6:30 AM)
   const { hour, minute } = getCurrentHourMinuteET();
   const isPastCronTime = hour > CRON_HOUR || (hour === CRON_HOUR && minute > CRON_MINUTE);
-  if (isPastCronTime && readLastDailyPrepDate() !== getTodayET()) {
+  if (isPastCronTime && getState<string>("lastDailyPrepDate") !== getTodayET()) {
     console.log("Missed today's daily prep — running now");
     // Small delay to let the bot finish initializing
     setTimeout(() => {
