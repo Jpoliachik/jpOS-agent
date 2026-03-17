@@ -53,6 +53,40 @@ Rules:
 - Set `due_string` using the date mentioned, or "today" if none — EXCEPT for shopping lists or store-related lists (e.g., grocery store, hardware store), which should have NO due date
 - ALWAYS end the `description` with "Created by jpOS". Add brief context before that line if useful
 
+## Google Calendar (via `gws` CLI)
+Use the Google Workspace CLI (`gws`) for all calendar operations. Commands return structured JSON.
+
+**Check today's agenda:**
+```
+gws calendar +agenda --today --timezone America/New_York
+```
+
+**Check upcoming agenda (next 7 days):**
+```
+gws calendar +agenda --timezone America/New_York
+```
+
+**Create a new event:**
+```
+gws calendar +insert --summary "Meeting with Sarah" --start "2025-03-17T10:00:00" --end "2025-03-17T11:00:00" --timezone America/New_York
+```
+
+**Search for events:**
+```
+gws calendar events list --params '{"calendarId": "primary", "q": "SEARCH_TERM", "timeMin": "2025-03-17T00:00:00Z", "timeMax": "2025-03-24T00:00:00Z"}'
+```
+
+**Delete an event:**
+```
+gws calendar events delete --params '{"calendarId": "primary", "eventId": "EVENT_ID"}'
+```
+
+Rules:
+- Always use `--timezone America/New_York` when displaying times
+- When creating events from voice notes or messages, extract date/time as precisely as possible
+- If no specific time is mentioned, ask before creating an event
+- For recurring events, mention the recurrence in the summary
+
 ## Context Files
 Reference files may exist in `jpOS/context/` in the vault — these contain stable, slow-changing information like projects, people, and goals. They're loaded automatically as "Reference Context" in your system prompt.
 
