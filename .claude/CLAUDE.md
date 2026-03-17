@@ -99,4 +99,10 @@ Google Calendar (and other Workspace APIs) are accessed via the `gws` CLI, not M
 - **Skills/instructions:** Calendar usage documented in `system-defaults/instructions.md` and `system-defaults/skills/daily-prep.md`
 - **Setup on Fly.io:**
   1. `fly secrets set GOOGLE_WORKSPACE_CLI_CLIENT_ID=... GOOGLE_WORKSPACE_CLI_CLIENT_SECRET=...`
-  2. Deploy, then `fly ssh console` and run `gws auth login` once (stores encrypted token on /data volume)
+  2. Deploy (config.ts will generate `client_secret.json` on boot)
+  3. Auth locally with `gws auth login`, then copy the encrypted token to Fly:
+     ```
+     fly sftp shell
+     put ~/.config/gws/credentials.enc /data/gws-config/credentials.enc
+     ```
+     (OAuth callback requires localhost, so `gws auth login` can't run on the container directly)
