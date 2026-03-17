@@ -16,34 +16,39 @@ if (process.env.GITHUB_PAT) {
   process.env.GITHUB_TOKEN = process.env.GITHUB_PAT;
 }
 
-// Google Workspace CLI: generate credentials file from Fly secrets on startup.
-// This makes auth robust across restarts — Fly secrets are the source of truth,
-// and the credentials file is regenerated every time the app boots.
-const gwsRefreshToken = process.env.GOOGLE_WORKSPACE_CLI_REFRESH_TOKEN;
+// Google Workspace CLI: generate client_secret.json from Fly secrets on startup.
+// gws uses this file + an encrypted credentials store (credentials.enc) for auth.
+// The client_secret.json is regenerated every boot from env vars; credentials.enc
+// lives on the persistent /data volume after a one-time `gws auth login`.
 const gwsClientId = process.env.GOOGLE_WORKSPACE_CLI_CLIENT_ID;
 const gwsClientSecret = process.env.GOOGLE_WORKSPACE_CLI_CLIENT_SECRET;
 
-if (gwsRefreshToken && gwsClientId && gwsClientSecret) {
-  const credentialsPath = "/data/gws-credentials.json";
+if (gwsClientId && gwsClientSecret) {
+  const gwsConfigDir = "/data/gws-config";
+  const clientSecretPath = `${gwsConfigDir}/client_secret.json`;
   try {
-    mkdirSync("/data", { recursive: true });
-    writeFileSync(credentialsPath, JSON.stringify({
-      client_id: gwsClientId,
-      client_secret: gwsClientSecret,
-      refresh_token: gwsRefreshToken,
-      token_type: "authorized_user",
-    }));
-    process.env.GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE = credentialsPath;
-    console.log("Google Workspace CLI credentials file generated from secrets");
+    mkdirSync(gwsConfigDir, { recursive: true });
+    writeFileSync(clientSecretPath, JSON.stringify({
+      installed: {
+        client_id: gwsClientId,
+        client_secret: gwsClientSecret,
+        project_id: "jp-personalprojects",
+        auth_uri: "https://accounts.google.com/o/oauth2/auth",
+        token_uri: "https://oauth2.googleapis.com/token",
+        auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+        redirect_uris: ["http://localhost"],
+      },
+    }, null, 2));
+    // Point gws at our config directory
+    process.env.GWS_CONFIG_DIR = gwsConfigDir;
+    console.log("Google Workspace CLI client_secret.json generated from secrets");
   } catch (err) {
-    console.warn("Failed to write GWS credentials file:", err);
+    console.warn("Failed to write GWS client secret file:", err);
   }
 }
 
 // Use file-based keyring backend since OS keyring is unavailable in containers.
-if (process.env.GOOGLE_WORKSPACE_CLI_TOKEN || process.env.GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE) {
-  process.env.GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND = process.env.GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND || "file";
-}
+process.env.GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND = process.env.GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND || "file";
 
 export const env = {
   anthropicApiKey: requireEnv("ANTHROPIC_API_KEY"),
@@ -61,8 +66,6 @@ export const env = {
   appStoreConnectVendorNumber: process.env.APP_STORE_CONNECT_VENDOR_NUMBER || "",
   // Google Workspace CLI (optional - gws calendar/gmail/drive commands available when set)
   googleWorkspaceToken: process.env.GOOGLE_WORKSPACE_CLI_TOKEN || "",
-  googleWorkspaceCredentialsFile: process.env.GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE || "",
   googleWorkspaceClientId: process.env.GOOGLE_WORKSPACE_CLI_CLIENT_ID || "",
   googleWorkspaceClientSecret: process.env.GOOGLE_WORKSPACE_CLI_CLIENT_SECRET || "",
-  googleWorkspaceRefreshToken: process.env.GOOGLE_WORKSPACE_CLI_REFRESH_TOKEN || "",
 };
