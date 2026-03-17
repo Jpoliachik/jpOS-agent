@@ -11,6 +11,9 @@ import { join } from "node:path";
 
 let botInstance: Bot | null = null;
 
+/** Counter for unique draft IDs */
+let draftIdCounter = 0;
+
 /** Sends "typing..." indicator every 4s until stopped. Returns a stop function. */
 function startTypingIndicator(ctx: Context): () => void {
   let active = true;
@@ -23,6 +26,57 @@ function startTypingIndicator(ctx: Context): () => void {
     active = false;
     clearInterval(interval);
   };
+}
+
+/**
+ * Creates a streaming draft handler for progressive message display.
+ * Uses Telegram's sendMessageDraft API for native streaming UX.
+ * Returns an onTextDelta callback and a finalize function.
+ */
+function createStreamingDraft(chatId: number, bot: Bot) {
+  const draftId = ++draftIdCounter;
+  let lastSentText = "";
+  let lastSendTime = 0;
+  let pendingText = "";
+  let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  const THROTTLE_MS = 300;
+
+  const sendDraft = (text: string) => {
+    if (text === lastSentText || text.length === 0) return;
+    lastSentText = text;
+    lastSendTime = Date.now();
+    bot.api.raw.sendMessageDraft({ chat_id: chatId, draft_id: draftId, text }).catch((err: Error) => {
+      console.warn("sendMessageDraft error:", err.message);
+    });
+  };
+
+  const onTextDelta = (accumulatedText: string) => {
+    pendingText = accumulatedText;
+    const elapsed = Date.now() - lastSendTime;
+    if (elapsed >= THROTTLE_MS) {
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        pendingTimer = null;
+      }
+      sendDraft(pendingText);
+    } else if (!pendingTimer) {
+      pendingTimer = setTimeout(() => {
+        pendingTimer = null;
+        sendDraft(pendingText);
+      }, THROTTLE_MS - elapsed);
+    }
+  };
+
+  const finalize = () => {
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+    }
+    // Send empty draft to clear the draft bubble before final message
+    bot.api.raw.sendMessageDraft({ chat_id: chatId, draft_id: draftId, text: "" }).catch(() => {});
+  };
+
+  return { onTextDelta, finalize };
 }
 
 export function createTelegramBot(): Bot {
@@ -70,6 +124,7 @@ export function createTelegramBot(): Bot {
     const photos = ctx.message.photo;
     const photo = photos[photos.length - 1];
 
+    const { onTextDelta, finalize } = createStreamingDraft(ctx.chat.id, bot);
     const stopTyping = startTypingIndicator(ctx);
 
     let tempFilePath: string | null = null;
@@ -88,9 +143,11 @@ export function createTelegramBot(): Bot {
         prompt: `The user sent a photo. Read the image file at ${tempFilePath} to see it.\n\nTheir message: ${caption}`,
         externalId,
         systemContext,
+        onTextDelta,
       });
 
       await pushVaultChanges();
+      finalize();
       stopTyping();
 
       await sendWithMarkdownFallback((parseMode) =>
@@ -99,6 +156,7 @@ export function createTelegramBot(): Bot {
         }),
       );
     } catch (error) {
+      finalize();
       stopTyping();
       console.error("Photo message error:", error);
       await ctx.reply(
@@ -120,6 +178,7 @@ export function createTelegramBot(): Bot {
     const externalId = `telegram:${ctx.from!.id}`;
     const userMessage = ctx.message.text;
 
+    const { onTextDelta, finalize } = createStreamingDraft(ctx.chat.id, bot);
     const stopTyping = startTypingIndicator(ctx);
 
     try {
@@ -128,9 +187,11 @@ export function createTelegramBot(): Bot {
         prompt: userMessage,
         externalId,
         systemContext,
+        onTextDelta,
       });
 
       await pushVaultChanges();
+      finalize();
       stopTyping();
 
       await sendWithMarkdownFallback((parseMode) =>
@@ -139,6 +200,7 @@ export function createTelegramBot(): Bot {
         }),
       );
     } catch (error) {
+      finalize();
       stopTyping();
       console.error("Agent error:", error);
       await ctx.reply(
