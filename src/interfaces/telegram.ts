@@ -11,6 +11,36 @@ import { join } from "node:path";
 
 let botInstance: Bot | null = null;
 
+/** How long to wait for additional messages before sending to agent */
+const MESSAGE_DEBOUNCE_MS = 3000;
+
+interface UserMessageQueue {
+  pending: string[];       // Messages waiting for debounce to fire
+  debounceTimer: ReturnType<typeof setTimeout> | null;
+  processing: boolean;     // Agent is currently running
+  queued: string[];        // Messages that arrived while agent was running
+  ctx: Context | null;     // Latest context for replying
+  stopTyping: (() => void) | null;
+}
+
+const userQueues = new Map<string, UserMessageQueue>();
+
+function getOrCreateQueue(externalId: string): UserMessageQueue {
+  let queue = userQueues.get(externalId);
+  if (!queue) {
+    queue = {
+      pending: [],
+      debounceTimer: null,
+      processing: false,
+      queued: [],
+      ctx: null,
+      stopTyping: null,
+    };
+    userQueues.set(externalId, queue);
+  }
+  return queue;
+}
+
 /** Sends "typing..." indicator every 4s until stopped. Returns a stop function. */
 function startTypingIndicator(ctx: Context): () => void {
   let active = true;
@@ -23,6 +53,98 @@ function startTypingIndicator(ctx: Context): () => void {
     active = false;
     clearInterval(interval);
   };
+}
+
+/**
+ * Enqueue a text message for batched processing.
+ * - If agent is idle: buffer message and start/reset debounce timer.
+ * - If agent is busy: queue message for after it finishes.
+ */
+function enqueueTextMessage(externalId: string, text: string, ctx: Context) {
+  const queue = getOrCreateQueue(externalId);
+  queue.ctx = ctx;
+
+  if (queue.processing) {
+    queue.queued.push(text);
+    console.log(`Message queued (agent busy): "${text.slice(0, 50)}" (${queue.queued.length} queued)`);
+    return;
+  }
+
+  queue.pending.push(text);
+
+  if (queue.debounceTimer) {
+    clearTimeout(queue.debounceTimer);
+  }
+
+  // Start typing on first message
+  if (!queue.stopTyping) {
+    queue.stopTyping = startTypingIndicator(ctx);
+  }
+
+  console.log(`Message buffered: "${text.slice(0, 50)}" (${queue.pending.length} pending, waiting ${MESSAGE_DEBOUNCE_MS}ms)`);
+
+  queue.debounceTimer = setTimeout(() => {
+    queue.debounceTimer = null;
+    processMessageQueue(externalId, queue);
+  }, MESSAGE_DEBOUNCE_MS);
+}
+
+/** Flush pending messages into a single agent call. */
+async function processMessageQueue(externalId: string, queue: UserMessageQueue) {
+  const messages = queue.pending.splice(0);
+  if (messages.length === 0) return;
+
+  queue.processing = true;
+  const ctx = queue.ctx!;
+
+  if (!queue.stopTyping) {
+    queue.stopTyping = startTypingIndicator(ctx);
+  }
+
+  const combinedPrompt = messages.length === 1
+    ? messages[0]
+    : messages.map((m, i) => `[Message ${i + 1}]: ${m}`).join("\n\n");
+
+  console.log(`Processing ${messages.length} batched message(s) for ${externalId}`);
+
+  try {
+    const systemContext = buildSystemContext("message");
+    const response = await runAgent({
+      prompt: combinedPrompt,
+      externalId,
+      systemContext,
+    });
+
+    await pushVaultChanges();
+    queue.stopTyping?.();
+    queue.stopTyping = null;
+
+    await sendWithMarkdownFallback((parseMode) =>
+      ctx.reply(response.result || "Done.", {
+        ...(parseMode && { parse_mode: parseMode as "Markdown" }),
+      }),
+    );
+  } catch (error) {
+    queue.stopTyping?.();
+    queue.stopTyping = null;
+    console.error("Agent error:", error);
+    await ctx.reply(
+      `Error: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  } finally {
+    queue.processing = false;
+
+    // If messages arrived while agent was running, start a new debounce cycle
+    if (queue.queued.length > 0) {
+      queue.pending = queue.queued.splice(0);
+      queue.stopTyping = startTypingIndicator(ctx);
+      console.log(`Starting new debounce cycle with ${queue.pending.length} queued message(s)`);
+      queue.debounceTimer = setTimeout(() => {
+        queue.debounceTimer = null;
+        processMessageQueue(externalId, queue);
+      }, MESSAGE_DEBOUNCE_MS);
+    }
+  }
 }
 
 export function createTelegramBot(): Bot {
@@ -115,36 +237,10 @@ export function createTelegramBot(): Bot {
     }
   });
 
-  // Handle all text messages
-  bot.on("message:text", async (ctx) => {
+  // Handle all text messages — uses accumulator to batch rapid-fire messages
+  bot.on("message:text", (ctx) => {
     const externalId = `telegram:${ctx.from!.id}`;
-    const userMessage = ctx.message.text;
-
-    const stopTyping = startTypingIndicator(ctx);
-
-    try {
-      const systemContext = buildSystemContext("message");
-      const response = await runAgent({
-        prompt: userMessage,
-        externalId,
-        systemContext,
-      });
-
-      await pushVaultChanges();
-      stopTyping();
-
-      await sendWithMarkdownFallback((parseMode) =>
-        ctx.reply(response.result || "Done.", {
-          ...(parseMode && { parse_mode: parseMode as "Markdown" }),
-        }),
-      );
-    } catch (error) {
-      stopTyping();
-      console.error("Agent error:", error);
-      await ctx.reply(
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
-    }
+    enqueueTextMessage(externalId, ctx.message.text, ctx);
   });
 
   // Handle voice messages
