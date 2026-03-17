@@ -23,6 +23,15 @@ Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 - `src/mcp/todoist.ts` - Todoist MCP server
 - `src/obsidian.ts` - Git operations for Obsidian vault
 
+## State Management
+
+- **`jpos-state.json`** (persistent, on-disk) — Small flags and config only: `lastDailyPrepDate`, feature toggles, etc. Loaded synchronously and kept lightweight. Don't put large or frequently-mutated data here.
+- **Sessions** (in-memory) — Managed in `src/agent.ts`. Sessions have a 30-min TTL and are inherently ephemeral — no need to persist across restarts.
+- **Ramble jobs** (in-memory) — Actively mutated during processing, short-lived. Kept in-memory for the same reasons as sessions.
+- **Obsidian vault** (persistent, git-backed) — Long-term knowledge: memory entries, context files, system instructions. This is the durable store for anything the agent should remember across deploys.
+
+Rule of thumb: if it's a small flag or config value, it goes in `jpos-state.json`. If it's ephemeral runtime data, keep it in memory. If it needs to survive deploys and be human-readable, it goes in the Obsidian vault.
+
 ## System Instructions (Obsidian-driven)
 
 All jpOS data lives under `jpOS/` in the Obsidian vault:

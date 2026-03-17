@@ -3,14 +3,12 @@ import { runAgent } from "./agent.js";
 import { sendTelegramMessage } from "./interfaces/telegram.js";
 import { buildSystemContext } from "./instructions.js";
 import { pushVaultChanges } from "./obsidian.js";
+import { getState, setState } from "./state.js";
 
 const TIMEZONE = "America/New_York";
 const CRON_HOUR = 6;
 const CRON_MINUTE = 30;
 const DAILY_PREP_TIMEOUT_MS = 5 * 60_000; // 5 minutes
-
-/** Track the last date (YYYY-MM-DD in ET) we successfully ran daily prep */
-let lastDailyPrepDate: string | null = null;
 
 function getTodayET(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: TIMEZONE });
@@ -49,7 +47,7 @@ async function runDailyPrep(): Promise<void> {
     if (response.result) {
       const sent = await sendTelegramMessage(response.result);
       if (sent) {
-        lastDailyPrepDate = getTodayET();
+        setState("lastDailyPrepDate", getTodayET());
         console.log("Daily prep sent successfully");
       } else {
         console.error("Daily prep generated but Telegram send FAILED");
@@ -79,7 +77,7 @@ export function startCronJobs(): void {
   // Check if we missed today's daily prep (e.g., process restarted after 6:30 AM)
   const { hour, minute } = getCurrentHourMinuteET();
   const isPastCronTime = hour > CRON_HOUR || (hour === CRON_HOUR && minute > CRON_MINUTE);
-  if (isPastCronTime && lastDailyPrepDate !== getTodayET()) {
+  if (isPastCronTime && getState<string>("lastDailyPrepDate") !== getTodayET()) {
     console.log("Missed today's daily prep — running now");
     // Small delay to let the bot finish initializing
     setTimeout(() => {
