@@ -11,10 +11,12 @@ interface RunAgentParams {
   prompt: string;
   externalId: string;
   systemContext?: string;
+  /** Called with accumulated text as streaming deltas arrive */
+  onTextDelta?: (accumulatedText: string) => void;
 }
 
 export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
-  const { prompt, externalId, systemContext } = params;
+  const { prompt, externalId, systemContext, onTextDelta } = params;
 
   const existingSession = getSession(externalId);
   let sessionId: string | undefined = existingSession?.agentSessionId;
@@ -83,6 +85,10 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     "mcp__linear__linear_list_projects",
   );
 
+  // Track streaming text for the current assistant turn (reset on each new turn)
+  let streamingText = "";
+  let isStreamingTextBlock = false;
+
   for await (const message of query({
     prompt: fullPrompt,
     options: {
@@ -92,6 +98,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       settingSources: ["project"],
       cwd: process.env.AGENT_CWD || "/app",
       mcpServers,
+      includePartialMessages: !!onTextDelta,
       ...(sessionId ? { resume: sessionId } : {}),
     },
   })) {
@@ -119,12 +126,32 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       }
     }
 
+    // Handle streaming text deltas
+    if (message.type === "stream_event" && onTextDelta) {
+      const event = message.event as { type: string; delta?: { type: string; text?: string }; content_block?: { type: string } };
+      if (event.type === "content_block_start" && event.content_block?.type === "text") {
+        isStreamingTextBlock = true;
+        streamingText = "";
+      } else if (event.type === "content_block_delta" && isStreamingTextBlock && event.delta?.type === "text_delta" && event.delta.text) {
+        streamingText += event.delta.text;
+        onTextDelta(streamingText);
+      } else if (event.type === "content_block_stop") {
+        isStreamingTextBlock = false;
+      }
+    }
+
     // Log tool progress/errors
     if (message.type === "tool_progress") {
       const msg = message as { tool_name?: string; data?: string };
       if (msg.tool_name) {
         console.log(`Tool progress (${msg.tool_name}):`, (msg.data || "").slice(0, 200));
       }
+    }
+
+    // Reset streaming text when a new assistant message starts (new turn after tool use)
+    if (message.type === "assistant") {
+      streamingText = "";
+      isStreamingTextBlock = false;
     }
 
     if (message.type === "result") {
