@@ -11,6 +11,39 @@ import { join } from "node:path";
 
 let botInstance: Bot | null = null;
 
+/** Send after 3s of silence, or 10s max from first message — whichever comes first */
+const MESSAGE_DEBOUNCE_MS = 3000;
+const MESSAGE_MAX_WAIT_MS = 10000;
+
+interface UserMessageQueue {
+  pending: string[];       // Messages waiting for debounce to fire
+  debounceTimer: ReturnType<typeof setTimeout> | null;
+  maxWaitTimer: ReturnType<typeof setTimeout> | null;
+  processing: boolean;     // Agent is currently running
+  queued: string[];        // Messages that arrived while agent was running
+  ctx: Context | null;     // Latest context for replying
+  stopTyping: (() => void) | null;
+}
+
+const userQueues = new Map<string, UserMessageQueue>();
+
+function getOrCreateQueue(externalId: string): UserMessageQueue {
+  let queue = userQueues.get(externalId);
+  if (!queue) {
+    queue = {
+      pending: [],
+      debounceTimer: null,
+      maxWaitTimer: null,
+      processing: false,
+      queued: [],
+      ctx: null,
+      stopTyping: null,
+    };
+    userQueues.set(externalId, queue);
+  }
+  return queue;
+}
+
 /** Counter for unique draft IDs */
 let draftIdCounter = 0;
 
@@ -77,6 +110,134 @@ function createStreamingDraft(chatId: number, bot: Bot) {
   };
 
   return { onTextDelta, finalize };
+}
+
+/** Clear both timers on a queue. */
+function clearQueueTimers(queue: UserMessageQueue) {
+  if (queue.debounceTimer) {
+    clearTimeout(queue.debounceTimer);
+    queue.debounceTimer = null;
+  }
+  if (queue.maxWaitTimer) {
+    clearTimeout(queue.maxWaitTimer);
+    queue.maxWaitTimer = null;
+  }
+}
+
+/**
+ * Enqueue a text message for batched processing.
+ * - If agent is idle: buffer message and start/reset debounce timer.
+ *   A max-wait timer fires after 10s from the first message regardless.
+ * - If agent is busy: queue message for after it finishes.
+ */
+function enqueueTextMessage(externalId: string, text: string, ctx: Context) {
+  const queue = getOrCreateQueue(externalId);
+  queue.ctx = ctx;
+
+  if (queue.processing) {
+    queue.queued.push(text);
+    console.log(`Message queued (agent busy): "${text.slice(0, 50)}" (${queue.queued.length} queued)`);
+    return;
+  }
+
+  const isFirst = queue.pending.length === 0;
+  queue.pending.push(text);
+
+  // Reset the debounce (silence) timer on every message
+  if (queue.debounceTimer) {
+    clearTimeout(queue.debounceTimer);
+  }
+
+  // Start typing on first message
+  if (!queue.stopTyping) {
+    queue.stopTyping = startTypingIndicator(ctx);
+  }
+
+  console.log(`Message buffered: "${text.slice(0, 50)}" (${queue.pending.length} pending, waiting ${MESSAGE_DEBOUNCE_MS}ms debounce)`);
+
+  queue.debounceTimer = setTimeout(() => {
+    clearQueueTimers(queue);
+    processMessageQueue(externalId, queue);
+  }, MESSAGE_DEBOUNCE_MS);
+
+  // Start max-wait timer only on the first message of a batch
+  if (isFirst) {
+    queue.maxWaitTimer = setTimeout(() => {
+      console.log(`Max wait reached (${MESSAGE_MAX_WAIT_MS}ms) — flushing ${queue.pending.length} message(s)`);
+      clearQueueTimers(queue);
+      processMessageQueue(externalId, queue);
+    }, MESSAGE_MAX_WAIT_MS);
+  }
+}
+
+/** Flush pending messages into a single agent call. */
+async function processMessageQueue(externalId: string, queue: UserMessageQueue) {
+  const messages = queue.pending.splice(0);
+  if (messages.length === 0) return;
+
+  queue.processing = true;
+  const ctx = queue.ctx!;
+
+  if (!queue.stopTyping) {
+    queue.stopTyping = startTypingIndicator(ctx);
+  }
+
+  const combinedPrompt = messages.length === 1
+    ? messages[0]
+    : messages.map((m, i) => `[Message ${i + 1}]: ${m}`).join("\n\n");
+
+  console.log(`Processing ${messages.length} batched message(s) for ${externalId}`);
+
+  const { onTextDelta, finalize } = botInstance
+    ? createStreamingDraft(ctx.chat!.id, botInstance)
+    : { onTextDelta: undefined, finalize: async () => {} };
+
+  try {
+    const systemContext = buildSystemContext("message");
+    const response = await runAgent({
+      prompt: combinedPrompt,
+      externalId,
+      systemContext,
+      onTextDelta,
+    });
+
+    await pushVaultChanges();
+    await finalize();
+    queue.stopTyping?.();
+    queue.stopTyping = null;
+
+    await sendWithMarkdownFallback((parseMode) =>
+      ctx.reply(response.result || "Done.", {
+        ...(parseMode && { parse_mode: parseMode as "Markdown" }),
+      }),
+    );
+  } catch (error) {
+    await finalize();
+    queue.stopTyping?.();
+    queue.stopTyping = null;
+    console.error("Agent error:", error);
+    await ctx.reply(
+      `Error: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  } finally {
+    queue.processing = false;
+
+    // If messages arrived while agent was running, start a new cycle with both timers
+    if (queue.queued.length > 0) {
+      queue.pending = queue.queued.splice(0);
+      queue.stopTyping = startTypingIndicator(ctx);
+      console.log(`Starting new debounce cycle with ${queue.pending.length} queued message(s)`);
+      queue.debounceTimer = setTimeout(() => {
+        clearQueueTimers(queue);
+        processMessageQueue(externalId, queue);
+      }, MESSAGE_DEBOUNCE_MS);
+      queue.maxWaitTimer = setTimeout(() => {
+        console.log(`Max wait reached (${MESSAGE_MAX_WAIT_MS}ms) — flushing ${queue.pending.length} message(s)`);
+        clearQueueTimers(queue);
+        processMessageQueue(externalId, queue);
+      }, MESSAGE_MAX_WAIT_MS);
+    }
+  }
 }
 
 export function createTelegramBot(): Bot {
@@ -173,40 +334,10 @@ export function createTelegramBot(): Bot {
     }
   });
 
-  // Handle all text messages
-  bot.on("message:text", async (ctx) => {
+  // Handle all text messages — uses accumulator to batch rapid-fire messages
+  bot.on("message:text", (ctx) => {
     const externalId = `telegram:${ctx.from!.id}`;
-    const userMessage = ctx.message.text;
-
-    const { onTextDelta, finalize } = createStreamingDraft(ctx.chat.id, bot);
-    const stopTyping = startTypingIndicator(ctx);
-
-    try {
-      const systemContext = buildSystemContext("message");
-      const response = await runAgent({
-        prompt: userMessage,
-        externalId,
-        systemContext,
-        onTextDelta,
-      });
-
-      await pushVaultChanges();
-      await finalize();
-      stopTyping();
-
-      await sendWithMarkdownFallback((parseMode) =>
-        ctx.reply(response.result || "Done.", {
-          ...(parseMode && { parse_mode: parseMode as "Markdown" }),
-        }),
-      );
-    } catch (error) {
-      await finalize();
-      stopTyping();
-      console.error("Agent error:", error);
-      await ctx.reply(
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
-    }
+    enqueueTextMessage(externalId, ctx.message.text, ctx);
   });
 
   // Handle voice messages
