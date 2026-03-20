@@ -22,8 +22,6 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   let sessionId: string | undefined = existingSession?.agentSessionId;
   let result = "";
 
-  const fullPrompt = systemContext ? `${systemContext}\n\n${prompt}` : prompt;
-
   // Build MCP servers config
   const mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }> = {
     todoist: {
@@ -88,9 +86,12 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   // Track streaming text for the current assistant turn (reset on each new turn)
   let streamingText = "";
   let isStreamingTextBlock = false;
+  // Track the last non-empty assistant text across all turns, used as fallback
+  // when the SDK result is empty (e.g., agent ended on a tool call)
+  let lastAssistantText = "";
 
   for await (const message of query({
-    prompt: fullPrompt,
+    prompt,
     options: {
       model: "claude-sonnet-4-6",
       allowedTools,
@@ -99,6 +100,11 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       cwd: process.env.AGENT_CWD || "/app",
       mcpServers,
       includePartialMessages: !!onTextDelta,
+      // System prompt is ephemeral (not stored in conversation history),
+      // so it must be passed on every call including resumes.
+      ...(systemContext
+        ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: systemContext } }
+        : {}),
       ...(sessionId ? { resume: sessionId } : {}),
     },
   })) {
@@ -113,9 +119,12 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       setSession(externalId, sessionId);
     }
 
-    // Log tool usage for debugging
+    // Track assistant text (for fallback) and log tool usage
     if (message.type === "assistant" && message.message?.content) {
       for (const block of message.message.content) {
+        if ("text" in block && typeof block.text === "string" && block.text.trim()) {
+          lastAssistantText = block.text;
+        }
         if ("type" in block && block.type === "tool_use") {
           const toolBlock = block as { name?: string; input?: unknown };
           console.log(`Tool call: ${toolBlock.name}`, JSON.stringify(toolBlock.input).slice(0, 200));
@@ -164,5 +173,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     throw new Error("No session ID received from agent");
   }
 
-  return { result, sessionId };
+  // Prefer SDK result; fall back to last assistant text if SDK result is empty
+  // (happens when the agent's final action was a tool call with no text after)
+  return { result: result || lastAssistantText, sessionId };
 }
