@@ -116,9 +116,6 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     // Log tool usage for debugging
     if (message.type === "assistant" && message.message?.content) {
       for (const block of message.message.content) {
-        if ("text" in block) {
-          result = block.text as string;
-        }
         if ("type" in block && block.type === "tool_use") {
           const toolBlock = block as { name?: string; input?: unknown };
           console.log(`Tool call: ${toolBlock.name}`, JSON.stringify(toolBlock.input).slice(0, 200));
@@ -154,8 +151,12 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       isStreamingTextBlock = false;
     }
 
+    // Use the SDK's final result instead of capturing intermediate text
     if (message.type === "result") {
       console.log(`Done: ${message.subtype}`);
+      if ("result" in message && typeof message.result === "string") {
+        result = message.result;
+      }
     }
   }
 
