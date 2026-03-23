@@ -54,7 +54,7 @@ All agent prompts, skills, and personality live in the Obsidian vault, not this 
 
 **Other vault data:**
 - `jpOS/context/` — Stable reference files (projects, people, goals — no assumed filenames)
-- `jpOS/memory/` — Daily memory entries (`YYYY-MM-DD.md`), last 3 days loaded automatically
+- `jpOS/daily-log/` — Daily log entries (`YYYY-MM-DD.md`), last 3 days loaded into system prompt automatically
 - `jpOS/voice-notes/` — Daily voice note logs
 
 ### Template Variables

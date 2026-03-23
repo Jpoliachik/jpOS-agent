@@ -1,22 +1,35 @@
 /**
- * Memory system — reads daily memory files from the Obsidian vault.
+ * Memory system — reads memory from the Obsidian vault.
  *
- * Memory files live at jpOS/memory/YYYY-MM-DD.md and are written by the agent
- * during interactions. This module handles loading recent memory for context.
+ * Two sources:
+ *   jpOS/memory.md              — durable memory (always loaded)
+ *   jpOS/daily-log/YYYY-MM-DD.md — daily log entries (recent N days loaded)
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { VAULT_PATH, JPOS_DIR } from "./obsidian.js";
 
-const MEMORY_DIR = join(JPOS_DIR, "memory");
+const MEMORY_FILE = join(JPOS_DIR, "memory.md");
+const DAILY_LOG_DIR = join(JPOS_DIR, "daily-log");
+
+/**
+ * Load the durable memory file (jpOS/memory.md).
+ */
+export function loadDurableMemory(): string {
+  const path = join(VAULT_PATH, MEMORY_FILE);
+  try {
+    return readFileSync(path, "utf-8").trim();
+  } catch {
+    return "";
+  }
+}
 
 /**
  * Load the most recent daily memory files, concatenated newest-first.
- * Returns empty string if no memory files exist.
  */
 export function loadRecentMemory(days: number = 3): string {
-  const dir = join(VAULT_PATH, MEMORY_DIR);
+  const dir = join(VAULT_PATH, DAILY_LOG_DIR);
   if (!existsSync(dir)) return "";
 
   const files = readdirSync(dir)

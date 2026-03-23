@@ -5,8 +5,7 @@
  *   jpOS/system/soul.md            — agent identity & hard rules
  *   jpOS/system/instructions.md    — general action guidelines
  *   jpOS/system/skills/<name>.md   — per-skill prompts (voice-note, daily-prep, message)
- *   jpOS/context/*.md              — stable reference files (projects, people, goals, etc.)
- *   jpOS/memory/YYYY-MM-DD.md      — daily memory entries (recent days loaded automatically)
+ *   jpOS/daily-log/YYYY-MM-DD.md   — daily log entries (recent days loaded automatically)
  *
  * Template variables in .md files are replaced at load time:
  *   {{date}}        — today's date (YYYY-MM-DD, America/New_York)
@@ -15,10 +14,10 @@
  *   {{transcript}}  — voice note transcript (only for voice-note skill)
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { VAULT_PATH, JPOS_DIR } from "./obsidian.js";
-import { loadRecentMemory } from "./memory.js";
+import { loadDurableMemory, loadRecentMemory } from "./memory.js";
 
 const TIMEZONE = "America/New_York";
 
@@ -75,24 +74,6 @@ export function loadSkill(name: string): string {
   return readFileSafe(path) ?? "";
 }
 
-/** Read all jpOS/context/*.md files and return them concatenated. */
-export function loadContext(): string {
-  const dir = join(VAULT_PATH, JPOS_DIR, "context");
-  if (!existsSync(dir)) return "";
-
-  const files = readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
-  if (files.length === 0) return "";
-
-  const sections: string[] = [];
-  for (const file of files) {
-    const content = readFileSafe(join(dir, file));
-    if (content) {
-      sections.push(`### ${file}\n${content}`);
-    }
-  }
-  return sections.join("\n\n");
-}
-
 // ---------------------------------------------------------------------------
 // Prompt builders
 // ---------------------------------------------------------------------------
@@ -105,7 +86,7 @@ interface PromptVars {
 /**
  * Build the full system context for a given skill.
  *
- * Assembles: soul + instructions + context files + skill prompt,
+ * Assembles: soul + instructions + recent memory + skill prompt,
  * with all template variables resolved.
  */
 export function buildSystemContext(
@@ -131,8 +112,8 @@ export function buildSystemContext(
     );
   }
 
-  const context = loadContext();
-  const memory = loadRecentMemory();
+  const durableMemory = loadDurableMemory();
+  const recentMemory = loadRecentMemory();
   const skill = applyVars(loadSkill(skillName), templateVars);
 
   const parts: string[] = [
@@ -149,17 +130,17 @@ export function buildSystemContext(
     parts.push(instructions, "");
   }
 
-  if (context) {
-    parts.push("# Reference Context", "", context, "");
+  if (durableMemory) {
+    parts.push("# Memory", "", durableMemory, "");
   }
 
-  if (memory) {
-    parts.push("# Recent Memory", "", memory, "");
+  if (recentMemory) {
+    parts.push("# Daily Log", "", recentMemory, "");
   }
 
   // Tell the agent where memory files live so it can look up older days on demand
   parts.push(
-    `> **Memory files** are stored at \`${join(VAULT_PATH, JPOS_DIR, "memory")}/YYYY-MM-DD.md\`. ` +
+    `> **Daily log files** are stored at \`${join(VAULT_PATH, JPOS_DIR, "daily-log")}/YYYY-MM-DD.md\`. ` +
     "Only the last 3 days are loaded above. To recall older days, use Glob/Read to browse and read files in that directory.",
     "",
   );
