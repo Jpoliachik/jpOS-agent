@@ -157,6 +157,13 @@ export function buildSystemContext(
     parts.push("# Recent Memory", "", memory, "");
   }
 
+  // Tell the agent where memory files live so it can look up older days on demand
+  parts.push(
+    `> **Memory files** are stored at \`${join(VAULT_PATH, JPOS_DIR, "memory")}/YYYY-MM-DD.md\`. ` +
+    "Only the last 3 days are loaded above. To recall older days, use Glob/Read to browse and read files in that directory.",
+    "",
+  );
+
   if (skill) {
     parts.push("# Skill: " + skillName, "", skill, "");
   }
