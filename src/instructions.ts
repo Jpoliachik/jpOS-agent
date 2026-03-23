@@ -26,7 +26,10 @@ const TIMEZONE = "America/New_York";
 // ---------------------------------------------------------------------------
 
 function todayString(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: TIMEZONE });
+  const d = new Date();
+  const date = d.toLocaleDateString("en-CA", { timeZone: TIMEZONE });
+  const day = d.toLocaleDateString("en-US", { timeZone: TIMEZONE, weekday: "long" });
+  return `${date} (${day})`;
 }
 
 function timeString(): string {
