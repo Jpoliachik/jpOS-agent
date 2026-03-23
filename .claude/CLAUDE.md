@@ -4,13 +4,12 @@ Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 
 ## Integration Philosophy
 
-- **Prefer CLI + skills over MCP** for new integrations. CLI tools (invoked via Bash) are more token-efficient than MCP tool definitions and avoid context window bloat. Add usage instructions to the system prompt (skills) rather than registering MCP tool schemas.
+- **Prefer CLI + skills over MCP** for new integrations. CLI tools (invoked via Bash) are more token-efficient than MCP tool definitions and avoid context window bloat.
 - MCP servers are still used for Todoist, Linear, and App Store Connect (legacy).
 
 ## Claude Agent SDK Notes
 
-- **Always use `permissionMode: "acceptEdits"`** - Using `"bypassPermissions"` causes the SDK to fail with "Claude Code process exited with code 1"
-- The SDK requires Claude Code CLI installed on the host machine
+- **Always use `permissionMode: "acceptEdits"`** - Using `"bypassPermissions"` causes the SDK to fail with exit code 1
 - MCP server paths should be absolute (e.g., `/app/dist/mcp/todoist.js`)
 
 ## Architecture
@@ -23,64 +22,40 @@ Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 - `src/mcp/todoist.ts` - Todoist MCP server
 - `src/obsidian.ts` - Git operations for Obsidian vault
 
-## State Management
+## System Instructions (Obsidian vault — NOT in this repo)
 
-- **`jpos-state.json`** (persistent, on-disk) — Small flags and config only: `lastDailyPrepDate`, feature toggles, etc. Loaded synchronously and kept lightweight. Don't put large or frequently-mutated data here.
-- **Sessions** (in-memory) — Managed in `src/agent.ts`. Sessions have a 30-min TTL and are inherently ephemeral — no need to persist across restarts.
-- **Ramble jobs** (in-memory) — Actively mutated during processing, short-lived. Kept in-memory for the same reasons as sessions.
-- **Obsidian vault** (persistent, git-backed) — Long-term knowledge: memory entries, context files, system instructions. This is the durable store for anything the agent should remember across deploys.
+All agent prompts, skills, and personality live in the Obsidian vault, not this repo. This repo contains only the runtime code. If `soul.md` or `instructions.md` are missing from the vault, the agent will error on startup with a message to Telegram.
 
-Rule of thumb: if it's a small flag or config value, it goes in `jpos-state.json`. If it's ephemeral runtime data, keep it in memory. If it needs to survive deploys and be human-readable, it goes in the Obsidian vault.
+**Required vault files** (under `jpOS/system/` in the Obsidian vault):
+- `soul.md` — Agent identity, personality, hard rules
+- `instructions.md` — General action guidelines (memory, GitHub Issues, Todoist, calendar, etc.)
 
-## System Instructions (Obsidian-driven)
+**Skills** (under `jpOS/system/skills/`):
+- `voice-note.md` — How to process voice note transcripts
+- `daily-prep.md` — Morning briefing prompt
+- `message.md` — How to handle direct messages
 
-All jpOS data lives under `jpOS/` in the Obsidian vault:
-
-- `jpOS/system/soul.md` — Agent identity, personality, hard rules
-- `jpOS/system/instructions.md` — General action guidelines (GitHub Issues, Todoist, vault notes, memory, etc.)
-- `jpOS/system/skills/voice-note.md` — How to process voice note transcripts
-- `jpOS/system/skills/daily-prep.md` — Morning briefing prompt
-- `jpOS/system/skills/message.md` — How to handle direct messages
+**Other vault data:**
 - `jpOS/context/` — Stable reference files (projects, people, goals — no assumed filenames)
-- `jpOS/memory/` — Daily memory entries (`YYYY-MM-DD.md`), last 5 days loaded automatically
+- `jpOS/memory/` — Daily memory entries (`YYYY-MM-DD.md`)
 - `jpOS/voice-notes/` — Daily voice note logs
-
-### Memory System
-
-The agent writes timestamped entries to `jpOS/memory/YYYY-MM-DD.md` after each interaction.
-`src/memory.ts` loads the most recent 5 days of memory files into the system prompt as "Recent Memory".
-This replaces the need for a `current-focus.md` file — current focus is whatever's in recent memory.
-
-Stable, slow-changing info (projects, people, goals) stays in `jpOS/context/` as reference files.
-The code does not assume any specific context files exist — it loads whatever is present.
 
 ### Template Variables
 
-`{{date}}`, `{{time}}`, `{{vault_path}}`, `{{transcript}}` are replaced at load time.
+`{{date}}`, `{{time}}`, `{{vault_path}}`, `{{transcript}}` are replaced at load time in `src/instructions.ts`.
 
-Default versions of system files ship in `system-defaults/` and are seeded into the vault on first run (won't overwrite edits made in Obsidian). No context files are seeded — those are created organically by the agent or the user.
+## State Management
+
+- **`jpos-state.json`** (persistent, on-disk) — Small flags and config only: `lastDailyPrepDate`, feature toggles, etc.
+- **Sessions** (in-memory) — 30-min TTL, ephemeral.
+- **Ramble jobs** (in-memory) — Short-lived, actively mutated during processing.
+- **Obsidian vault** (persistent, git-backed) — Long-term knowledge, system instructions, memory.
 
 ## API Endpoints
 
-### POST /voice-note
-Webhook for voice transcription apps. Logs to Obsidian vault, analyzes for actions, sends Telegram notification.
-
-```
-POST https://jpos-agent.fly.dev/voice-note
-Authorization: Bearer <API_BEARER_TOKEN>
-Content-Type: application/json
-
-{
-  "transcript": "Your transcribed text",
-  "timestamp": "10:30 AM"  // optional
-}
-```
-
-### POST /agent
-General agent interaction with optional session persistence.
-
-### GET /health
-Health check (no auth).
+- `POST /voice-note` — Webhook for voice transcription apps (auth required)
+- `POST /agent` — General agent interaction with optional session persistence
+- `GET /health` — Health check (no auth)
 
 ## Deployment
 
@@ -92,18 +67,15 @@ Health check (no auth).
 
 - Repo: `github.com/Jpoliachik/obsidian`
 - Cloned to `/data/obsidian-vault` on the container
-- All jpOS data under `jpOS/` directory (voice-notes, context, system instructions)
-- Voice notes saved to `jpOS/voice-notes/YYYY-MM-DD.md`
 - Uses GitHub PAT (GITHUB_PAT secret) for push access
-- **Timezone: `America/New_York`** - hardcoded in `src/obsidian.ts` for date/time conversion
+- **Timezone: `America/New_York`** — hardcoded in `src/obsidian.ts`
 
 ## Google Workspace CLI (`gws`)
 
-Google Calendar (and other Workspace APIs) are accessed via the `gws` CLI, not MCP. The agent calls `gws` commands through the Bash tool.
+Google Calendar accessed via `gws` CLI, not MCP.
 
 - **Package:** `@googleworkspace/cli` (installed globally in Docker image)
-- **Auth:** Headless via env vars — `GOOGLE_WORKSPACE_CLI_TOKEN` (access token) or `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` (OAuth JSON)
-- **Keyring:** Uses file backend (`GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND=file`) in containers
+- **Auth:** Headless via env vars — `GOOGLE_WORKSPACE_CLI_TOKEN` or `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE`
+- **Keyring:** File backend (`GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND=file`) in containers
 - **Calendar commands:** `gws calendar +agenda`, `gws calendar +insert`, `gws calendar events list/delete`
-- **Skills/instructions:** Calendar usage documented in `system-defaults/instructions.md` and `system-defaults/skills/daily-prep.md`
-- **Setup required on Fly.io:** Set `GOOGLE_WORKSPACE_CLI_TOKEN` or `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE` + `GOOGLE_WORKSPACE_CLI_CLIENT_ID` / `GOOGLE_WORKSPACE_CLI_CLIENT_SECRET` as Fly secrets
+- **Calendar usage** documented in vault files: `jpOS/system/instructions.md` and `jpOS/system/skills/daily-prep.md`

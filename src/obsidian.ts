@@ -5,7 +5,7 @@
 
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync, readdirSync, cpSync } from "node:fs";
+import { existsSync, mkdirSync, appendFileSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -68,39 +68,6 @@ async function configureGit(): Promise<void> {
   await execAsync(`git config --global user.name "jpOS Agent"`);
 }
 
-function seedSystemDefaults(): void {
-  const defaultsDir = join(process.env.AGENT_CWD || "/app", "system-defaults");
-  if (!existsSync(defaultsDir)) return;
-
-  const systemDir = join(VAULT_PATH, JPOS_DIR, "system");
-  const skillsDir = join(systemDir, "skills");
-
-  if (!existsSync(systemDir)) mkdirSync(systemDir, { recursive: true });
-  if (!existsSync(skillsDir)) mkdirSync(skillsDir, { recursive: true });
-
-  const seedFile = (relativePath: string) => {
-    const src = join(defaultsDir, relativePath);
-    const dest = join(systemDir, relativePath);
-    if (!existsSync(dest) && existsSync(src)) {
-      const destDir = join(dest, "..");
-      if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
-      cpSync(src, dest);
-      console.log(`Seeded default: system/${relativePath}`);
-    }
-  };
-
-  for (const file of readdirSync(defaultsDir).filter(f => f.endsWith(".md"))) {
-    seedFile(file);
-  }
-
-  const skillsDefaultsDir = join(defaultsDir, "skills");
-  if (existsSync(skillsDefaultsDir)) {
-    for (const file of readdirSync(skillsDefaultsDir).filter(f => f.endsWith(".md"))) {
-      seedFile(join("skills", file));
-    }
-  }
-}
-
 /**
  * One-time vault initialization. Call at startup before accepting requests.
  */
@@ -115,8 +82,6 @@ export async function ensureVaultCloned(): Promise<void> {
   } else {
     await pullVault();
   }
-
-  seedSystemDefaults();
 
   const memoryDir = join(VAULT_PATH, JPOS_DIR, "memory");
   if (!existsSync(memoryDir)) {

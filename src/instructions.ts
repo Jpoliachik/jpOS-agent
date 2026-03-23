@@ -123,14 +123,19 @@ export function buildSystemContext(
 
   const soul = applyVars(loadSoul(), templateVars);
   const instructions = applyVars(loadInstructions(), templateVars);
+
+  if (!soul && !instructions) {
+    throw new Error(
+      "Missing system files: soul.md and instructions.md not found in vault. " +
+      "Ensure jpOS/system/soul.md and jpOS/system/instructions.md exist in the Obsidian vault."
+    );
+  }
+
   const context = loadContext();
   const memory = loadRecentMemory();
   const skill = applyVars(loadSkill(skillName), templateVars);
 
-  const parts: string[] = [
-    "CRITICAL: You MUST use tools for every action. NEVER fabricate responses.",
-    "",
-  ];
+  const parts: string[] = [];
 
   if (soul) {
     parts.push(soul, "");
