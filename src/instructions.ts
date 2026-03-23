@@ -123,12 +123,21 @@ export function buildSystemContext(
 
   const soul = applyVars(loadSoul(), templateVars);
   const instructions = applyVars(loadInstructions(), templateVars);
+
+  if (!soul && !instructions) {
+    throw new Error(
+      "Missing system files: soul.md and instructions.md not found in vault. " +
+      "Ensure jpOS/system/soul.md and jpOS/system/instructions.md exist in the Obsidian vault."
+    );
+  }
+
   const context = loadContext();
   const memory = loadRecentMemory();
   const skill = applyVars(loadSkill(skillName), templateVars);
 
   const parts: string[] = [
-    "CRITICAL: You MUST use tools for every action. NEVER fabricate responses.",
+    `**Current date:** ${templateVars.date}`,
+    `**Current time:** ${templateVars.time} (America/New_York)`,
     "",
   ];
 
@@ -148,15 +157,16 @@ export function buildSystemContext(
     parts.push("# Recent Memory", "", memory, "");
   }
 
+  // Tell the agent where memory files live so it can look up older days on demand
+  parts.push(
+    `> **Memory files** are stored at \`${join(VAULT_PATH, JPOS_DIR, "memory")}/YYYY-MM-DD.md\`. ` +
+    "Only the last 3 days are loaded above. To recall older days, use Glob/Read to browse and read files in that directory.",
+    "",
+  );
+
   if (skill) {
     parts.push("# Skill: " + skillName, "", skill, "");
   }
-
-  parts.push(
-    `Today's date: ${templateVars.date}`,
-    `Current time: ${templateVars.time}`,
-    `Obsidian vault path: ${templateVars.vault_path}`,
-  );
 
   return parts.join("\n");
 }

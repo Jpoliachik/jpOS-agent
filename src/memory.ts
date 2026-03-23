@@ -15,7 +15,7 @@ const MEMORY_DIR = join(JPOS_DIR, "memory");
  * Load the most recent daily memory files, concatenated newest-first.
  * Returns empty string if no memory files exist.
  */
-export function loadRecentMemory(days: number = 5): string {
+export function loadRecentMemory(days: number = 3): string {
   const dir = join(VAULT_PATH, MEMORY_DIR);
   if (!existsSync(dir)) return "";
 
