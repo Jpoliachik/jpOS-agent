@@ -135,7 +135,11 @@ export function buildSystemContext(
   const memory = loadRecentMemory();
   const skill = applyVars(loadSkill(skillName), templateVars);
 
-  const parts: string[] = [];
+  const parts: string[] = [
+    `**Current date:** ${templateVars.date}`,
+    `**Current time:** ${templateVars.time} (America/New_York)`,
+    "",
+  ];
 
   if (soul) {
     parts.push(soul, "");
@@ -156,12 +160,6 @@ export function buildSystemContext(
   if (skill) {
     parts.push("# Skill: " + skillName, "", skill, "");
   }
-
-  parts.push(
-    `Today's date: ${templateVars.date}`,
-    `Current time: ${templateVars.time}`,
-    `Obsidian vault path: ${templateVars.vault_path}`,
-  );
 
   return parts.join("\n");
 }
