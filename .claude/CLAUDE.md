@@ -2,10 +2,27 @@
 
 Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 
-## Integration Philosophy
+## Guiding Principles
 
-- **Prefer CLI + skills over MCP** for new integrations. CLI tools (invoked via Bash) are more token-efficient than MCP tool definitions and avoid context window bloat.
-- MCP servers are still used for Todoist, Linear, and App Store Connect (legacy).
+### This repo is the runtime; the vault is the brain
+
+This repo (`jpOS-agent`) contains **only runtime code and tool integrations**. All personality, prompts, skills, and knowledge live in the Obsidian vault. When deciding where something belongs:
+
+- **This repo:** Runtime code, tool call implementations, integrations, interfaces (Telegram, API), infrastructure
+- **Obsidian vault:** Identity, instructions, skills, memory, context, anything the agent reads as prompts
+
+### Agent-first design: expose tools, don't make assumptions
+
+Everything we build should be exposed as **tool calls that let the agent decide** how and when to use them. Do not hardcode specific usage patterns or make assumptions about when/how a capability should be invoked. Instead:
+
+- Provide the tool and make its availability known in the system prompt
+- Let the agent decide when to call it and how to combine it with other tools
+- Prefer loading minimal context by default and letting the agent fetch more on demand
+- Avoid baking business logic into the runtime that should be agent-driven
+
+### Prefer CLI + skills over MCP for new integrations
+
+CLI tools (invoked via Bash) are more token-efficient than MCP tool definitions and avoid context window bloat. MCP servers are still used for Todoist, Linear, and App Store Connect (legacy).
 
 ## Claude Agent SDK Notes
 
