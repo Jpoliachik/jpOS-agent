@@ -50,6 +50,7 @@ export async function createApiServer() {
 
         return {
           result: response.result,
+          messages: response.messages,
           sessionId: response.sessionId,
         };
       } catch (error) {
