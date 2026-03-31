@@ -206,11 +206,18 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
     queue.stopTyping?.();
     queue.stopTyping = null;
 
-    await sendWithMarkdownFallback((parseMode) =>
-      ctx.reply(response.result || "Done.", {
-        ...(parseMode && { parse_mode: parseMode as "Markdown" }),
-      }),
-    );
+    // Send explicit messages if available, otherwise fall back to result
+    const messagesToSend = response.messages.length > 0
+      ? response.messages
+      : [response.result || "Done."];
+
+    for (const msg of messagesToSend) {
+      await sendWithMarkdownFallback((parseMode) =>
+        ctx.reply(msg, {
+          ...(parseMode && { parse_mode: parseMode as "Markdown" }),
+        }),
+      );
+    }
   } catch (error) {
     await finalize();
     queue.stopTyping?.();
@@ -311,11 +318,17 @@ export function createTelegramBot(): Bot {
       await finalize();
       stopTyping();
 
-      await sendWithMarkdownFallback((parseMode) =>
-        ctx.reply(agentResponse.result || "Done.", {
-          ...(parseMode && { parse_mode: parseMode as "Markdown" }),
-        }),
-      );
+      const messagesToSend = agentResponse.messages.length > 0
+        ? agentResponse.messages
+        : [agentResponse.result || "Done."];
+
+      for (const msg of messagesToSend) {
+        await sendWithMarkdownFallback((parseMode) =>
+          ctx.reply(msg, {
+            ...(parseMode && { parse_mode: parseMode as "Markdown" }),
+          }),
+        );
+      }
     } catch (error) {
       await finalize();
       stopTyping();
@@ -366,9 +379,9 @@ export function createTelegramBot(): Bot {
         duration: transcription.duration,
       });
 
-      let agentResponse: { result: string };
+      let agentResponse: { result: string; messages: string[] };
       if (isDuplicate) {
-        agentResponse = { result: "Duplicate voice note — already logged." };
+        agentResponse = { result: "Duplicate voice note — already logged.", messages: [] };
       } else {
         const systemContext = buildSystemContext("voice-note", {
           transcript: transcription.text,
@@ -383,14 +396,17 @@ export function createTelegramBot(): Bot {
 
       stopTyping();
 
-      await sendWithMarkdownFallback((parseMode) =>
-        ctx.reply(
-          agentResponse.result || "Voice note logged and processed.",
-          {
+      const messagesToSend = agentResponse.messages?.length > 0
+        ? agentResponse.messages
+        : [agentResponse.result || "Voice note logged and processed."];
+
+      for (const msg of messagesToSend) {
+        await sendWithMarkdownFallback((parseMode) =>
+          ctx.reply(msg, {
             ...(parseMode && { parse_mode: parseMode as "Markdown" }),
-          },
-        ),
-      );
+          }),
+        );
+      }
     } catch (error) {
       stopTyping();
       console.error("Voice message error:", error);

@@ -1,9 +1,14 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { getSession, setSession } from "./sessions.js";
 import { env } from "./config.js";
+import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 interface AgentResponse {
   result: string;
+  /** Explicit messages sent via the send_message tool. Empty if agent used text output instead. */
+  messages: string[];
   sessionId: string;
 }
 
@@ -22,8 +27,19 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   let sessionId: string | undefined = existingSession?.agentSessionId;
   let result = "";
 
+  // Create temp file for collecting send_message tool calls
+  const messageFile = join(tmpdir(), `jpos-messages-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+  writeFileSync(messageFile, "[]");
+
   // Build MCP servers config
   const mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }> = {
+    "send-message": {
+      command: "node",
+      args: [process.env.MCP_SEND_MESSAGE_PATH || "/app/dist/mcp/send-message.js"],
+      env: {
+        JPOS_MESSAGE_FILE: messageFile,
+      },
+    },
     todoist: {
       command: "node",
       args: [process.env.MCP_TODOIST_PATH || "/app/dist/mcp/todoist.js"],
@@ -36,6 +52,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   // Build allowed tools list
   const allowedTools = [
     "Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch",
+    "mcp__send-message__message_user",
     "mcp__todoist__todoist_create_task",
     "mcp__todoist__todoist_list_tasks",
     "mcp__todoist__todoist_complete_task",
@@ -173,7 +190,25 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     throw new Error("No session ID received from agent");
   }
 
-  // Prefer SDK result; fall back to last assistant text if SDK result is empty
-  // (happens when the agent's final action was a tool call with no text after)
-  return { result: result || lastAssistantText, sessionId };
+  // Read collected messages from the send_message tool
+  let collectedMessages: string[] = [];
+  try {
+    collectedMessages = JSON.parse(readFileSync(messageFile, "utf-8"));
+  } catch {
+    // File missing or corrupt — no messages collected
+  } finally {
+    try { unlinkSync(messageFile); } catch { /* ignore cleanup errors */ }
+  }
+
+  if (collectedMessages.length > 0) {
+    console.log(`Agent sent ${collectedMessages.length} explicit message(s) via message_user tool`);
+  }
+
+  // Prefer explicit send_message calls; fall back to SDK result or last assistant text
+  const fallbackResult = result || lastAssistantText;
+  return {
+    result: collectedMessages.length > 0 ? collectedMessages.join("\n\n") : fallbackResult,
+    messages: collectedMessages,
+    sessionId,
+  };
 }

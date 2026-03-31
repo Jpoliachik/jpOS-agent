@@ -152,5 +152,16 @@ export function buildSystemContext(
     parts.push("# Skill: " + skillName, "", skill, "");
   }
 
+  // Runtime instruction: always use send_message for user-facing communication
+  parts.push(
+    "# Message Delivery",
+    "",
+    "**IMPORTANT:** Your text output is NOT delivered to the user. " +
+    "You MUST use the `message_user` tool for ALL user-facing communication. " +
+    "Any text you produce outside of `message_user` is internal only (logging, reasoning). " +
+    "Always call `message_user` at least once per conversation turn with your response to the user.",
+    "",
+  );
+
   return parts.join("\n");
 }
