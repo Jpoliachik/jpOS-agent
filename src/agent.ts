@@ -18,10 +18,12 @@ interface RunAgentParams {
   systemContext?: string;
   /** Called with accumulated text as streaming deltas arrive */
   onTextDelta?: (accumulatedText: string) => void;
+  /** Called immediately when the agent sends a message via the message_user tool */
+  onMessage?: (text: string) => void;
 }
 
 export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
-  const { prompt, externalId, systemContext, onTextDelta } = params;
+  const { prompt, externalId, systemContext, onTextDelta, onMessage } = params;
 
   const existingSession = getSession(externalId);
   let sessionId: string | undefined = existingSession?.agentSessionId;
@@ -106,6 +108,8 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   // Track the last non-empty assistant text across all turns, used as fallback
   // when the SDK result is empty (e.g., agent ended on a tool call)
   let lastAssistantText = "";
+  // Count messages delivered in real-time via onMessage callback
+  let messagesSentViaCallback = 0;
 
   for await (const message of query({
     prompt,
@@ -145,6 +149,15 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
         if ("type" in block && block.type === "tool_use") {
           const toolBlock = block as { name?: string; input?: unknown };
           console.log(`Tool call: ${toolBlock.name}`, JSON.stringify(toolBlock.input).slice(0, 200));
+
+          // Fire onMessage immediately when agent calls message_user
+          if (onMessage && toolBlock.name === "mcp__send-message__message_user") {
+            const input = toolBlock.input as { text?: string } | undefined;
+            if (input?.text) {
+              messagesSentViaCallback++;
+              onMessage(input.text);
+            }
+          }
         }
       }
     }
@@ -201,10 +214,12 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   }
 
   if (collectedMessages.length > 0) {
-    console.log(`Agent sent ${collectedMessages.length} explicit message(s) via message_user tool`);
+    console.log(`Agent sent ${collectedMessages.length} explicit message(s) via message_user tool (${messagesSentViaCallback} delivered via callback)`);
   }
 
-  // Prefer explicit send_message calls; fall back to SDK result or last assistant text
+  // Return all collected messages + fallback result.
+  // When onMessage is provided, messages were already delivered in real-time,
+  // but callers still get the full list for logging/response purposes.
   const fallbackResult = result || lastAssistantText;
   return {
     result: collectedMessages.length > 0 ? collectedMessages.join("\n\n") : fallbackResult,

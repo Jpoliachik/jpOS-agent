@@ -192,6 +192,20 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
     ? createStreamingDraft(ctx.chat!.id, botInstance)
     : { onTextDelta: undefined, finalize: async () => {} };
 
+  // Send messages immediately when the agent calls message_user
+  const onMessage = (text: string) => {
+    // Clear the streaming draft before sending a real message
+    finalize().then(() => {
+      queue.stopTyping?.();
+      queue.stopTyping = null;
+      sendWithMarkdownFallback((parseMode) =>
+        ctx.reply(text, {
+          ...(parseMode && { parse_mode: parseMode as "Markdown" }),
+        }),
+      );
+    });
+  };
+
   try {
     const systemContext = buildSystemContext("message");
     const response = await runAgent({
@@ -199,6 +213,7 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
       externalId,
       systemContext,
       onTextDelta,
+      onMessage,
     });
 
     await pushVaultChanges();
@@ -206,14 +221,10 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
     queue.stopTyping?.();
     queue.stopTyping = null;
 
-    // Send explicit messages if available, otherwise fall back to result
-    const messagesToSend = response.messages.length > 0
-      ? response.messages
-      : [response.result || "Done."];
-
-    for (const msg of messagesToSend) {
+    // Send final result too (agent can control this via prompt instructions)
+    if (response.result) {
       await sendWithMarkdownFallback((parseMode) =>
-        ctx.reply(msg, {
+        ctx.reply(response.result, {
           ...(parseMode && { parse_mode: parseMode as "Markdown" }),
         }),
       );
@@ -293,7 +304,19 @@ export function createTelegramBot(): Bot {
     const photo = photos[photos.length - 1];
 
     const { onTextDelta, finalize } = createStreamingDraft(ctx.chat.id, bot);
-    const stopTyping = startTypingIndicator(ctx);
+    let stopTyping: (() => void) | null = startTypingIndicator(ctx);
+
+    const onMessage = (text: string) => {
+      finalize().then(() => {
+        stopTyping?.();
+        stopTyping = null;
+        sendWithMarkdownFallback((parseMode) =>
+          ctx.reply(text, {
+            ...(parseMode && { parse_mode: parseMode as "Markdown" }),
+          }),
+        );
+      });
+    };
 
     let tempFilePath: string | null = null;
     try {
@@ -312,26 +335,24 @@ export function createTelegramBot(): Bot {
         externalId,
         systemContext,
         onTextDelta,
+        onMessage,
       });
 
       await pushVaultChanges();
       await finalize();
-      stopTyping();
+      stopTyping?.();
+      stopTyping = null;
 
-      const messagesToSend = agentResponse.messages.length > 0
-        ? agentResponse.messages
-        : [agentResponse.result || "Done."];
-
-      for (const msg of messagesToSend) {
+      if (agentResponse.result) {
         await sendWithMarkdownFallback((parseMode) =>
-          ctx.reply(msg, {
+          ctx.reply(agentResponse.result, {
             ...(parseMode && { parse_mode: parseMode as "Markdown" }),
           }),
         );
       }
     } catch (error) {
       await finalize();
-      stopTyping();
+      stopTyping?.();
       console.error("Photo message error:", error);
       await ctx.reply(
         `jpOS: Error: ${error instanceof Error ? error.message : "Unknown error"}`
