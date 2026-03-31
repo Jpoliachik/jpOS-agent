@@ -224,7 +224,7 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
     queue.stopTyping = null;
     console.error("Agent error:", error);
     await ctx.reply(
-      `Error: ${error instanceof Error ? error.message : "Unknown error"}`
+      `jpOS: Error: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   } finally {
     queue.processing = false;
@@ -334,7 +334,7 @@ export function createTelegramBot(): Bot {
       stopTyping();
       console.error("Photo message error:", error);
       await ctx.reply(
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
+        `jpOS: Error: ${error instanceof Error ? error.message : "Unknown error"}`
       );
     } finally {
       if (tempFilePath) {
@@ -411,7 +411,7 @@ export function createTelegramBot(): Bot {
       stopTyping();
       console.error("Voice message error:", error);
       await ctx.reply(
-        `Error processing voice message: ${error instanceof Error ? error.message : "Unknown error"}`
+        `jpOS: Error processing voice message: ${error instanceof Error ? error.message : "Unknown error"}`
       );
     } finally {
       // Clean up temp file

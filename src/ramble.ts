@@ -99,7 +99,7 @@ export async function processRecording(params: ProcessRecordingParams): Promise<
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`[ramble:${id}] Processing failed: ${errorMsg}`);
     failJob({ id, error: errorMsg });
-    await sendTelegramMessage(`Ramble processing failed: ${errorMsg}`).catch(() => {});
+    await sendTelegramMessage(`jpOS: Ramble processing failed: ${errorMsg}`).catch(() => {});
   }
 }
 
