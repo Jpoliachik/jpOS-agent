@@ -48,7 +48,10 @@ async function runDailyPrep(): Promise<void> {
     await pushVaultChanges();
 
     if (response.result) {
-      const sent = await sendTelegramMessage(response.result);
+      const text = response.messages.length > 0
+        ? response.messages.join("\n\n")
+        : response.result;
+      const sent = await sendTelegramMessage(text);
       if (sent) {
         setState("lastDailyPrepDate", getTodayET());
         console.log("Daily prep sent successfully");
@@ -90,7 +93,10 @@ async function runEodCheckin(): Promise<void> {
     await pushVaultChanges();
 
     if (response.result) {
-      const sent = await sendTelegramMessage(response.result);
+      const text = response.messages.length > 0
+        ? response.messages.join("\n\n")
+        : response.result;
+      const sent = await sendTelegramMessage(text);
       if (sent) {
         setState("lastEodCheckinDate", getTodayET());
         console.log("EOD check-in sent successfully");

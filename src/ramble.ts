@@ -80,7 +80,7 @@ export async function processRecording(params: ProcessRecordingParams): Promise<
         systemContext,
       }).then(async (r) => {
         await pushVaultChanges();
-        return r.result;
+        return r.messages.length > 0 ? r.messages.join("\n\n") : r.result;
       }),
       AGENT_TIMEOUT_MS,
       "Agent processing timed out",
