@@ -29,9 +29,11 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   let sessionId: string | undefined = existingSession?.agentSessionId;
   let result = "";
 
-  // Create temp file for collecting send_message tool calls
-  const messageFile = join(tmpdir(), `jpos-messages-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
-  writeFileSync(messageFile, "[]");
+  // Temp file for collecting message_user calls (only needed when no onMessage callback)
+  const messageFile = onMessage
+    ? null
+    : join(tmpdir(), `jpos-messages-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+  if (messageFile) writeFileSync(messageFile, "[]");
 
   // Build MCP servers config
   const mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }> = {
@@ -39,7 +41,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       command: "node",
       args: [process.env.MCP_SEND_MESSAGE_PATH || "/app/dist/mcp/send-message.js"],
       env: {
-        JPOS_MESSAGE_FILE: messageFile,
+        JPOS_MESSAGE_FILE: messageFile || "/dev/null",
       },
     },
     todoist: {
@@ -108,8 +110,6 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   // Track the last non-empty assistant text across all turns, used as fallback
   // when the SDK result is empty (e.g., agent ended on a tool call)
   let lastAssistantText = "";
-  // Count messages delivered in real-time via onMessage callback
-  let messagesSentViaCallback = 0;
 
   for await (const message of query({
     prompt,
@@ -154,7 +154,6 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
           if (onMessage && toolBlock.name === "mcp__send-message__message_user") {
             const input = toolBlock.input as { text?: string } | undefined;
             if (input?.text) {
-              messagesSentViaCallback++;
               onMessage(input.text);
             }
           }
@@ -203,23 +202,18 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     throw new Error("No session ID received from agent");
   }
 
-  // Read collected messages from the send_message tool
+  // Collect messages from file (only used when no onMessage callback)
   let collectedMessages: string[] = [];
-  try {
-    collectedMessages = JSON.parse(readFileSync(messageFile, "utf-8"));
-  } catch {
-    // File missing or corrupt — no messages collected
-  } finally {
-    try { unlinkSync(messageFile); } catch { /* ignore cleanup errors */ }
+  if (messageFile) {
+    try {
+      collectedMessages = JSON.parse(readFileSync(messageFile, "utf-8"));
+    } catch {
+      // File missing or corrupt — no messages collected
+    } finally {
+      try { unlinkSync(messageFile); } catch { /* ignore */ }
+    }
   }
 
-  if (collectedMessages.length > 0) {
-    console.log(`Agent sent ${collectedMessages.length} explicit message(s) via message_user tool (${messagesSentViaCallback} delivered via callback)`);
-  }
-
-  // Return all collected messages + fallback result.
-  // When onMessage is provided, messages were already delivered in real-time,
-  // but callers still get the full list for logging/response purposes.
   const fallbackResult = result || lastAssistantText;
   return {
     result: collectedMessages.length > 0 ? collectedMessages.join("\n\n") : fallbackResult,

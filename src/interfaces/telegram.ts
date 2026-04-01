@@ -112,6 +112,36 @@ function createStreamingDraft(chatId: number, bot: Bot) {
   return { onTextDelta, finalize };
 }
 
+/**
+ * Creates an onMessage callback that sends messages to Telegram immediately.
+ * Clears the streaming draft and typing indicator on first message.
+ * Uses a sequential queue to preserve message ordering.
+ */
+function createOnMessageHandler(
+  ctx: Context,
+  finalize: () => Promise<void>,
+  getStopTyping: () => (() => void) | null,
+  setStopTyping: (fn: (() => void) | null) => void,
+): (text: string) => void {
+  let sendQueue = Promise.resolve();
+  return (text: string) => {
+    sendQueue = sendQueue.then(async () => {
+      try {
+        await finalize();
+        getStopTyping()?.();
+        setStopTyping(null);
+        await sendWithMarkdownFallback((parseMode) =>
+          ctx.reply(text, {
+            ...(parseMode && { parse_mode: parseMode as "Markdown" }),
+          }),
+        );
+      } catch (error) {
+        console.error("Failed to send message_user message:", error);
+      }
+    });
+  };
+}
+
 /** Clear both timers on a queue. */
 function clearQueueTimers(queue: UserMessageQueue) {
   if (queue.debounceTimer) {
@@ -192,19 +222,11 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
     ? createStreamingDraft(ctx.chat!.id, botInstance)
     : { onTextDelta: undefined, finalize: async () => {} };
 
-  // Send messages immediately when the agent calls message_user
-  const onMessage = (text: string) => {
-    // Clear the streaming draft before sending a real message
-    finalize().then(() => {
-      queue.stopTyping?.();
-      queue.stopTyping = null;
-      sendWithMarkdownFallback((parseMode) =>
-        ctx.reply(text, {
-          ...(parseMode && { parse_mode: parseMode as "Markdown" }),
-        }),
-      );
-    });
-  };
+  const onMessage = createOnMessageHandler(
+    ctx, finalize,
+    () => queue.stopTyping,
+    (fn) => { queue.stopTyping = fn; },
+  );
 
   try {
     const systemContext = buildSystemContext("message");
@@ -306,17 +328,11 @@ export function createTelegramBot(): Bot {
     const { onTextDelta, finalize } = createStreamingDraft(ctx.chat.id, bot);
     let stopTyping: (() => void) | null = startTypingIndicator(ctx);
 
-    const onMessage = (text: string) => {
-      finalize().then(() => {
-        stopTyping?.();
-        stopTyping = null;
-        sendWithMarkdownFallback((parseMode) =>
-          ctx.reply(text, {
-            ...(parseMode && { parse_mode: parseMode as "Markdown" }),
-          }),
-        );
-      });
-    };
+    const onMessage = createOnMessageHandler(
+      ctx, finalize,
+      () => stopTyping,
+      (fn) => { stopTyping = fn; },
+    );
 
     let tempFilePath: string | null = null;
     try {
@@ -379,7 +395,13 @@ export function createTelegramBot(): Bot {
     const voice = ctx.message.voice;
     let tempFilePath: string | null = null;
 
-    const stopTyping = startTypingIndicator(ctx);
+    let stopTyping: (() => void) | null = startTypingIndicator(ctx);
+    const noopFinalize = async () => {};
+    const onMessage = createOnMessageHandler(
+      ctx, noopFinalize,
+      () => stopTyping,
+      (fn) => { stopTyping = fn; },
+    );
 
     try {
       // Download voice file
@@ -400,9 +422,9 @@ export function createTelegramBot(): Bot {
         duration: transcription.duration,
       });
 
-      let agentResponse: { result: string; messages: string[] };
+      let agentResponse: { result: string };
       if (isDuplicate) {
-        agentResponse = { result: "Duplicate voice note — already logged.", messages: [] };
+        agentResponse = { result: "Duplicate voice note — already logged." };
       } else {
         const systemContext = buildSystemContext("voice-note", {
           transcript: transcription.text,
@@ -411,25 +433,23 @@ export function createTelegramBot(): Bot {
           prompt: "Process the voice note transcript described in your instructions.",
           externalId: "api:voice-notes",
           systemContext,
+          onMessage,
         });
         await pushVaultChanges();
       }
 
-      stopTyping();
+      stopTyping?.();
+      stopTyping = null;
 
-      const messagesToSend = agentResponse.messages?.length > 0
-        ? agentResponse.messages
-        : [agentResponse.result || "Voice note logged and processed."];
-
-      for (const msg of messagesToSend) {
+      if (agentResponse.result) {
         await sendWithMarkdownFallback((parseMode) =>
-          ctx.reply(msg, {
+          ctx.reply(agentResponse.result, {
             ...(parseMode && { parse_mode: parseMode as "Markdown" }),
           }),
         );
       }
     } catch (error) {
-      stopTyping();
+      stopTyping?.();
       console.error("Voice message error:", error);
       await ctx.reply(
         `jpOS: Error processing voice message: ${error instanceof Error ? error.message : "Unknown error"}`
