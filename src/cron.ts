@@ -48,7 +48,10 @@ async function runDailyPrep(): Promise<void> {
     await pushVaultChanges();
 
     if (response.result) {
-      const sent = await sendTelegramMessage(response.result);
+      const text = response.messages.length > 0
+        ? response.messages.join("\n\n")
+        : response.result;
+      const sent = await sendTelegramMessage(text);
       if (sent) {
         setState("lastDailyPrepDate", getTodayET());
         console.log("Daily prep sent successfully");
@@ -58,13 +61,13 @@ async function runDailyPrep(): Promise<void> {
     } else {
       console.error("Daily prep returned empty result");
       await sendTelegramMessage(
-        "Daily prep job ran but returned no content. Check logs."
+        "jpOS: Daily prep job ran but returned no content. Check logs."
       );
     }
   } catch (error) {
     console.error("Daily prep job failed:", error);
     await sendTelegramMessage(
-      `Daily prep failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      `jpOS: Daily prep failed: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   }
 }
@@ -90,7 +93,10 @@ async function runEodCheckin(): Promise<void> {
     await pushVaultChanges();
 
     if (response.result) {
-      const sent = await sendTelegramMessage(response.result);
+      const text = response.messages.length > 0
+        ? response.messages.join("\n\n")
+        : response.result;
+      const sent = await sendTelegramMessage(text);
       if (sent) {
         setState("lastEodCheckinDate", getTodayET());
         console.log("EOD check-in sent successfully");
@@ -100,13 +106,13 @@ async function runEodCheckin(): Promise<void> {
     } else {
       console.error("EOD check-in returned empty result");
       await sendTelegramMessage(
-        "EOD check-in job ran but returned no content. Check logs."
+        "jpOS: EOD check-in job ran but returned no content. Check logs."
       );
     }
   } catch (error) {
     console.error("EOD check-in job failed:", error);
     await sendTelegramMessage(
-      `EOD check-in failed: ${error instanceof Error ? error.message : "Unknown error"}`
+      `jpOS: EOD check-in failed: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   }
 }

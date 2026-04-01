@@ -80,7 +80,7 @@ export async function processRecording(params: ProcessRecordingParams): Promise<
         systemContext,
       }).then(async (r) => {
         await pushVaultChanges();
-        return r.result;
+        return r.messages.length > 0 ? r.messages.join("\n\n") : r.result;
       }),
       AGENT_TIMEOUT_MS,
       "Agent processing timed out",
@@ -99,7 +99,7 @@ export async function processRecording(params: ProcessRecordingParams): Promise<
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`[ramble:${id}] Processing failed: ${errorMsg}`);
     failJob({ id, error: errorMsg });
-    await sendTelegramMessage(`Ramble processing failed: ${errorMsg}`).catch(() => {});
+    await sendTelegramMessage(`jpOS: Ramble processing failed: ${errorMsg}`).catch(() => {});
   }
 }
 

@@ -112,6 +112,36 @@ function createStreamingDraft(chatId: number, bot: Bot) {
   return { onTextDelta, finalize };
 }
 
+/**
+ * Creates an onMessage callback that sends messages to Telegram immediately.
+ * Clears the streaming draft and typing indicator on first message.
+ * Uses a sequential queue to preserve message ordering.
+ */
+function createOnMessageHandler(
+  ctx: Context,
+  finalize: () => Promise<void>,
+  getStopTyping: () => (() => void) | null,
+  setStopTyping: (fn: (() => void) | null) => void,
+): (text: string) => void {
+  let sendQueue = Promise.resolve();
+  return (text: string) => {
+    sendQueue = sendQueue.then(async () => {
+      try {
+        await finalize();
+        getStopTyping()?.();
+        setStopTyping(null);
+        await sendWithMarkdownFallback((parseMode) =>
+          ctx.reply(text, {
+            ...(parseMode && { parse_mode: parseMode as "Markdown" }),
+          }),
+        );
+      } catch (error) {
+        console.error("Failed to send message_user message:", error);
+      }
+    });
+  };
+}
+
 /** Clear both timers on a queue. */
 function clearQueueTimers(queue: UserMessageQueue) {
   if (queue.debounceTimer) {
@@ -192,6 +222,12 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
     ? createStreamingDraft(ctx.chat!.id, botInstance)
     : { onTextDelta: undefined, finalize: async () => {} };
 
+  const onMessage = createOnMessageHandler(
+    ctx, finalize,
+    () => queue.stopTyping,
+    (fn) => { queue.stopTyping = fn; },
+  );
+
   try {
     const systemContext = buildSystemContext("message");
     const response = await runAgent({
@@ -199,6 +235,7 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
       externalId,
       systemContext,
       onTextDelta,
+      onMessage,
     });
 
     await pushVaultChanges();
@@ -206,14 +243,10 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
     queue.stopTyping?.();
     queue.stopTyping = null;
 
-    // Send explicit messages if available, otherwise fall back to result
-    const messagesToSend = response.messages.length > 0
-      ? response.messages
-      : [response.result || "Done."];
-
-    for (const msg of messagesToSend) {
+    // Send final result too (agent can control this via prompt instructions)
+    if (response.result) {
       await sendWithMarkdownFallback((parseMode) =>
-        ctx.reply(msg, {
+        ctx.reply(response.result, {
           ...(parseMode && { parse_mode: parseMode as "Markdown" }),
         }),
       );
@@ -224,7 +257,7 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
     queue.stopTyping = null;
     console.error("Agent error:", error);
     await ctx.reply(
-      `Error: ${error instanceof Error ? error.message : "Unknown error"}`
+      `jpOS: Error: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   } finally {
     queue.processing = false;
@@ -293,7 +326,13 @@ export function createTelegramBot(): Bot {
     const photo = photos[photos.length - 1];
 
     const { onTextDelta, finalize } = createStreamingDraft(ctx.chat.id, bot);
-    const stopTyping = startTypingIndicator(ctx);
+    let stopTyping: (() => void) | null = startTypingIndicator(ctx);
+
+    const onMessage = createOnMessageHandler(
+      ctx, finalize,
+      () => stopTyping,
+      (fn) => { stopTyping = fn; },
+    );
 
     let tempFilePath: string | null = null;
     try {
@@ -312,29 +351,27 @@ export function createTelegramBot(): Bot {
         externalId,
         systemContext,
         onTextDelta,
+        onMessage,
       });
 
       await pushVaultChanges();
       await finalize();
-      stopTyping();
+      stopTyping?.();
+      stopTyping = null;
 
-      const messagesToSend = agentResponse.messages.length > 0
-        ? agentResponse.messages
-        : [agentResponse.result || "Done."];
-
-      for (const msg of messagesToSend) {
+      if (agentResponse.result) {
         await sendWithMarkdownFallback((parseMode) =>
-          ctx.reply(msg, {
+          ctx.reply(agentResponse.result, {
             ...(parseMode && { parse_mode: parseMode as "Markdown" }),
           }),
         );
       }
     } catch (error) {
       await finalize();
-      stopTyping();
+      stopTyping?.();
       console.error("Photo message error:", error);
       await ctx.reply(
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`
+        `jpOS: Error: ${error instanceof Error ? error.message : "Unknown error"}`
       );
     } finally {
       if (tempFilePath) {
@@ -358,7 +395,13 @@ export function createTelegramBot(): Bot {
     const voice = ctx.message.voice;
     let tempFilePath: string | null = null;
 
-    const stopTyping = startTypingIndicator(ctx);
+    let stopTyping: (() => void) | null = startTypingIndicator(ctx);
+    const noopFinalize = async () => {};
+    const onMessage = createOnMessageHandler(
+      ctx, noopFinalize,
+      () => stopTyping,
+      (fn) => { stopTyping = fn; },
+    );
 
     try {
       // Download voice file
@@ -379,9 +422,9 @@ export function createTelegramBot(): Bot {
         duration: transcription.duration,
       });
 
-      let agentResponse: { result: string; messages: string[] };
+      let agentResponse: { result: string };
       if (isDuplicate) {
-        agentResponse = { result: "Duplicate voice note — already logged.", messages: [] };
+        agentResponse = { result: "Duplicate voice note — already logged." };
       } else {
         const systemContext = buildSystemContext("voice-note", {
           transcript: transcription.text,
@@ -390,28 +433,26 @@ export function createTelegramBot(): Bot {
           prompt: "Process the voice note transcript described in your instructions.",
           externalId: "api:voice-notes",
           systemContext,
+          onMessage,
         });
         await pushVaultChanges();
       }
 
-      stopTyping();
+      stopTyping?.();
+      stopTyping = null;
 
-      const messagesToSend = agentResponse.messages?.length > 0
-        ? agentResponse.messages
-        : [agentResponse.result || "Voice note logged and processed."];
-
-      for (const msg of messagesToSend) {
+      if (agentResponse.result) {
         await sendWithMarkdownFallback((parseMode) =>
-          ctx.reply(msg, {
+          ctx.reply(agentResponse.result, {
             ...(parseMode && { parse_mode: parseMode as "Markdown" }),
           }),
         );
       }
     } catch (error) {
-      stopTyping();
+      stopTyping?.();
       console.error("Voice message error:", error);
       await ctx.reply(
-        `Error processing voice message: ${error instanceof Error ? error.message : "Unknown error"}`
+        `jpOS: Error processing voice message: ${error instanceof Error ? error.message : "Unknown error"}`
       );
     } finally {
       // Clean up temp file
