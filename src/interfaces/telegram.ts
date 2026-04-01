@@ -243,8 +243,8 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
     queue.stopTyping?.();
     queue.stopTyping = null;
 
-    // Send final result too (agent can control this via prompt instructions)
-    if (response.result) {
+    // Only send result as fallback if message_user was never called
+    if (!response.messagesDelivered && response.result) {
       await sendWithMarkdownFallback((parseMode) =>
         ctx.reply(response.result, {
           ...(parseMode && { parse_mode: parseMode as "Markdown" }),
@@ -359,7 +359,7 @@ export function createTelegramBot(): Bot {
       stopTyping?.();
       stopTyping = null;
 
-      if (agentResponse.result) {
+      if (!agentResponse.messagesDelivered && agentResponse.result) {
         await sendWithMarkdownFallback((parseMode) =>
           ctx.reply(agentResponse.result, {
             ...(parseMode && { parse_mode: parseMode as "Markdown" }),
@@ -422,9 +422,9 @@ export function createTelegramBot(): Bot {
         duration: transcription.duration,
       });
 
-      let agentResponse: { result: string };
+      let agentResponse: { result: string; messagesDelivered: boolean };
       if (isDuplicate) {
-        agentResponse = { result: "Duplicate voice note — already logged." };
+        agentResponse = { result: "Duplicate voice note — already logged.", messagesDelivered: false };
       } else {
         const systemContext = buildSystemContext("voice-note", {
           transcript: transcription.text,
@@ -441,7 +441,7 @@ export function createTelegramBot(): Bot {
       stopTyping?.();
       stopTyping = null;
 
-      if (agentResponse.result) {
+      if (!agentResponse.messagesDelivered && agentResponse.result) {
         await sendWithMarkdownFallback((parseMode) =>
           ctx.reply(agentResponse.result, {
             ...(parseMode && { parse_mode: parseMode as "Markdown" }),

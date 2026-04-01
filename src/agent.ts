@@ -7,8 +7,10 @@ import { tmpdir } from "node:os";
 
 interface AgentResponse {
   result: string;
-  /** Explicit messages sent via the send_message tool. Empty if agent used text output instead. */
+  /** Explicit messages sent via the message_user tool. Empty if agent used text output instead. */
   messages: string[];
+  /** Whether any messages were delivered in real-time via the onMessage callback. */
+  messagesDelivered: boolean;
   sessionId: string;
 }
 
@@ -110,6 +112,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   // Track the last non-empty assistant text across all turns, used as fallback
   // when the SDK result is empty (e.g., agent ended on a tool call)
   let lastAssistantText = "";
+  let messagesDelivered = false;
 
   for await (const message of query({
     prompt,
@@ -121,11 +124,9 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       cwd: process.env.AGENT_CWD || "/app",
       mcpServers,
       includePartialMessages: !!onTextDelta,
-      // System prompt is ephemeral (not stored in conversation history),
-      // so it must be passed on every call including resumes.
-      ...(systemContext
-        ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: systemContext } }
-        : {}),
+      // System prompt comes entirely from the Obsidian vault (no Claude Code preset).
+      // Ephemeral — must be passed on every call including resumes.
+      ...(systemContext ? { systemPrompt: systemContext } : {}),
       ...(sessionId ? { resume: sessionId } : {}),
     },
   })) {
@@ -151,10 +152,11 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
           console.log(`Tool call: ${toolBlock.name}`, JSON.stringify(toolBlock.input).slice(0, 200));
 
           // Fire onMessage immediately when agent calls message_user
-          if (onMessage && toolBlock.name === "mcp__send-message__message_user") {
+          if (toolBlock.name === "mcp__send-message__message_user") {
             const input = toolBlock.input as { text?: string } | undefined;
             if (input?.text) {
-              onMessage(input.text);
+              messagesDelivered = true;
+              if (onMessage) onMessage(input.text);
             }
           }
         }
@@ -218,6 +220,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   return {
     result: collectedMessages.length > 0 ? collectedMessages.join("\n\n") : fallbackResult,
     messages: collectedMessages,
+    messagesDelivered,
     sessionId,
   };
 }
