@@ -222,11 +222,16 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
     ? createStreamingDraft(ctx.chat!.id, botInstance)
     : { onTextDelta: undefined, finalize: async () => {} };
 
+  let messageSentViaCallback = false;
   const onMessage = createOnMessageHandler(
     ctx, finalize,
     () => queue.stopTyping,
     (fn) => { queue.stopTyping = fn; },
   );
+  const wrappedOnMessage = (text: string) => {
+    messageSentViaCallback = true;
+    onMessage(text);
+  };
 
   try {
     const systemContext = buildSystemContext("message");
@@ -235,7 +240,7 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
       externalId,
       systemContext,
       onTextDelta,
-      onMessage,
+      onMessage: wrappedOnMessage,
     });
 
     await pushVaultChanges();
@@ -243,8 +248,8 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
     queue.stopTyping?.();
     queue.stopTyping = null;
 
-    // Send final result too (agent can control this via prompt instructions)
-    if (response.result) {
+    // Only send final result if no messages were already delivered via onMessage
+    if (response.result && !messageSentViaCallback) {
       await sendWithMarkdownFallback((parseMode) =>
         ctx.reply(response.result, {
           ...(parseMode && { parse_mode: parseMode as "Markdown" }),
@@ -328,11 +333,16 @@ export function createTelegramBot(): Bot {
     const { onTextDelta, finalize } = createStreamingDraft(ctx.chat.id, bot);
     let stopTyping: (() => void) | null = startTypingIndicator(ctx);
 
+    let messageSentViaCallback = false;
     const onMessage = createOnMessageHandler(
       ctx, finalize,
       () => stopTyping,
       (fn) => { stopTyping = fn; },
     );
+    const wrappedOnMessage = (text: string) => {
+      messageSentViaCallback = true;
+      onMessage(text);
+    };
 
     let tempFilePath: string | null = null;
     try {
@@ -351,7 +361,7 @@ export function createTelegramBot(): Bot {
         externalId,
         systemContext,
         onTextDelta,
-        onMessage,
+        onMessage: wrappedOnMessage,
       });
 
       await pushVaultChanges();
@@ -359,7 +369,7 @@ export function createTelegramBot(): Bot {
       stopTyping?.();
       stopTyping = null;
 
-      if (agentResponse.result) {
+      if (agentResponse.result && !messageSentViaCallback) {
         await sendWithMarkdownFallback((parseMode) =>
           ctx.reply(agentResponse.result, {
             ...(parseMode && { parse_mode: parseMode as "Markdown" }),
@@ -397,11 +407,16 @@ export function createTelegramBot(): Bot {
 
     let stopTyping: (() => void) | null = startTypingIndicator(ctx);
     const noopFinalize = async () => {};
+    let messageSentViaCallback = false;
     const onMessage = createOnMessageHandler(
       ctx, noopFinalize,
       () => stopTyping,
       (fn) => { stopTyping = fn; },
     );
+    const wrappedOnMessage = (text: string) => {
+      messageSentViaCallback = true;
+      onMessage(text);
+    };
 
     try {
       // Download voice file
@@ -433,7 +448,7 @@ export function createTelegramBot(): Bot {
           prompt: "Process the voice note transcript described in your instructions.",
           externalId: "api:voice-notes",
           systemContext,
-          onMessage,
+          onMessage: wrappedOnMessage,
         });
         await pushVaultChanges();
       }
@@ -441,7 +456,7 @@ export function createTelegramBot(): Bot {
       stopTyping?.();
       stopTyping = null;
 
-      if (agentResponse.result) {
+      if (agentResponse.result && !messageSentViaCallback) {
         await sendWithMarkdownFallback((parseMode) =>
           ctx.reply(agentResponse.result, {
             ...(parseMode && { parse_mode: parseMode as "Markdown" }),
