@@ -4,7 +4,7 @@ import { runAgent } from "../agent.js";
 import { clearSession } from "../sessions.js";
 import { pushVaultChanges, appendVoiceNote } from "../obsidian.js";
 import { transcribeAudio } from "../transcription.js";
-import { buildSystemContext } from "../instructions.js";
+import { buildSystemContext } from "../prompt.js";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
