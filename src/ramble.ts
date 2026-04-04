@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { transcribeAudio } from "./transcription.js";
 import { pushVaultChanges, appendVoiceNote } from "./obsidian.js";
-import { buildSystemContext } from "./instructions.js";
+import { buildSystemContext } from "./prompt.js";
 import { runAgent } from "./agent.js";
 import { completeJob, failJob } from "./ramble-jobs.js";
 import { sendTelegramMessage } from "./interfaces/telegram.js";

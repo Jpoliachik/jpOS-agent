@@ -1,11 +1,15 @@
 /**
- * Instruction loader — reads system prompts and skills from the Obsidian vault.
+ * Instruction loader — reads system prompts and skills from the repo,
+ * and memory/daily-log from the Obsidian vault.
  *
- * Vault layout (all under jpOS/ in the vault):
- *   jpOS/system/soul.md            — agent identity & hard rules
- *   jpOS/system/instructions.md    — general action guidelines
- *   jpOS/system/skills/<name>.md   — per-skill prompts (voice-note, daily-prep, message)
- *   jpOS/daily-log/YYYY-MM-DD.md   — daily log entries (recent days loaded automatically)
+ * Repo layout (system/ at repo root):
+ *   system/soul.md            — agent identity & hard rules
+ *   system/instructions.md    — general action guidelines
+ *   system/skills/<name>.md   — per-skill prompts (voice-note, daily-prep, message, eod-checkin)
+ *
+ * Vault layout (runtime-mutable, under jpOS/ in the vault):
+ *   jpOS/memory.md             — durable memory
+ *   jpOS/daily-log/YYYY-MM-DD.md — daily log entries (recent days loaded automatically)
  *
  * Template variables in .md files are replaced at load time:
  *   {{date}}        — today's date (YYYY-MM-DD, America/New_York)
@@ -15,9 +19,15 @@
  */
 
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { VAULT_PATH, JPOS_DIR } from "./obsidian.js";
 import { loadDurableMemory, loadRecentMemory } from "./memory.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/** Path to system/ directory at repo root (contains soul.md, instructions.md, skills/) */
+const SYSTEM_DIR = join(__dirname, "..", "system");
 
 const TIMEZONE = "America/New_York";
 
@@ -59,27 +69,21 @@ function applyVars(text: string, vars: Record<string, string>): string {
 // Core loaders
 // ---------------------------------------------------------------------------
 
-/** Read jpOS/system/soul.md from the vault. */
-export function loadSoul(): string {
-  const path = join(VAULT_PATH, JPOS_DIR, "system", "soul.md");
-  return readFileSafe(path) ?? "";
-}
+// Cache static system files at module load — they don't change at runtime
+const SOUL_CONTENT = readFileSafe(join(SYSTEM_DIR, "soul.md")) ?? "";
+const INSTRUCTIONS_CONTENT = readFileSafe(join(SYSTEM_DIR, "instructions.md")) ?? "";
 
-/** Read jpOS/system/instructions.md from the vault. */
-export function loadInstructions(): string {
-  const path = join(VAULT_PATH, JPOS_DIR, "system", "instructions.md");
-  return readFileSafe(path) ?? "";
-}
-
-/** Read a named skill from jpOS/system/skills/<name>.md. */
+/** Read a named skill from system/skills/<name>.md in the repo. */
 export function loadSkill(name: string): string {
-  const path = join(VAULT_PATH, JPOS_DIR, "system", "skills", `${name}.md`);
+  const path = join(SYSTEM_DIR, "skills", `${name}.md`);
   return readFileSafe(path) ?? "";
 }
 
 // ---------------------------------------------------------------------------
 // Prompt builders
 // ---------------------------------------------------------------------------
+
+export type SkillName = "voice-note" | "daily-prep" | "eod-checkin" | "message";
 
 interface PromptVars {
   transcript?: string;
@@ -93,7 +97,7 @@ interface PromptVars {
  * with all template variables resolved.
  */
 export function buildSystemContext(
-  skillName: string,
+  skillName: SkillName,
   vars?: PromptVars,
 ): string {
   const templateVars: Record<string, string> = {
@@ -105,13 +109,13 @@ export function buildSystemContext(
     ),
   };
 
-  const soul = applyVars(loadSoul(), templateVars);
-  const instructions = applyVars(loadInstructions(), templateVars);
+  const soul = applyVars(SOUL_CONTENT, templateVars);
+  const instructions = applyVars(INSTRUCTIONS_CONTENT, templateVars);
 
   if (!soul && !instructions) {
     throw new Error(
-      "Missing system files: soul.md and instructions.md not found in vault. " +
-      "Ensure jpOS/system/soul.md and jpOS/system/instructions.md exist in the Obsidian vault."
+      "Missing system files: soul.md and instructions.md not found. " +
+      `Ensure system/soul.md and system/instructions.md exist in the repo (looked in ${SYSTEM_DIR}).`
     );
   }
 
@@ -159,7 +163,7 @@ export function buildSystemContext(
   );
 
   if (skill) {
-    parts.push("# Skill: " + skillName, "", skill, "");
+    parts.push(`# Skill: ${skillName}`, "", skill, "");
   }
 
   return parts.join("\n");
