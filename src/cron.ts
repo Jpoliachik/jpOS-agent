@@ -38,7 +38,11 @@ async function runDailyPrep(): Promise<void> {
     const systemContext = buildSystemContext("daily-prep");
     const response = await Promise.race([
       runAgent({
-        prompt: "Generate the daily prep briefing as described in your instructions.",
+        prompt:
+          "Generate the daily prep briefing as described in your instructions. " +
+          "If something positive or worth appreciating stands out from the recent daily logs " +
+          "(a win, progress on a goal, a good interaction), briefly call it out. " +
+          "Keep it natural — just a quick nod, not a gratitude section.",
         externalId: "cron:daily-prep",
         systemContext,
       }),
