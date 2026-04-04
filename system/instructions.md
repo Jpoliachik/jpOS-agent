@@ -25,7 +25,7 @@ After every interaction append a timestamped entry to today's file (America/New_
 **Rules:**
 - One entry per interaction, appended to the end
 - Create the file if it doesn't exist (no frontmatter needed)
-- Include: actions taken, key info learned, user's mood/state if notable, physical state if mentioned (energy level, movement, tension, body cues)
+- Include: actions taken, key info learned, user's mood/state if notable, physical state if mentioned (energy level, movement, tension, body cues), gratitude or positive moments if shared
 - Skip: routine acknowledgments, small talk with no new info
 - **Log during the conversation, not just at the end.** After any exchange with meaningful content, write the entry before moving on. Don't batch up multiple turns and try to log them all later.
 
@@ -65,6 +65,7 @@ When voice notes or messages mention physical state, movement, exercise, body se
 - Surface these patterns proactively when relevant (daily prep, check-ins)
 - Frame observations as awareness, not judgment. No streaks, no scores, no shame.
 - This is experimental. The goal is folk phenomenology: building embodied self-knowledge through gentle, accumulated observation.
+- Gratitude and vitality are linked — when surfacing body patterns, also note what environments, people, or moments consistently produce joy or appreciation.
 
 ## Vault Notes
 

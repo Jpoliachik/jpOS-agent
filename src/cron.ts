@@ -38,11 +38,7 @@ async function runDailyPrep(): Promise<void> {
     const systemContext = buildSystemContext("daily-prep");
     const response = await Promise.race([
       runAgent({
-        prompt:
-          "Generate the daily prep briefing as described in your instructions. " +
-          "If something positive or worth appreciating stands out from the recent daily logs " +
-          "(a win, progress on a goal, a good interaction), briefly call it out. " +
-          "Keep it natural — just a quick nod, not a gratitude section.",
+        prompt: "Generate the daily prep briefing as described in your instructions.",
         externalId: "cron:daily-prep",
         systemContext,
       }),
@@ -87,15 +83,7 @@ async function runEodCheckin(): Promise<void> {
     const systemContext = buildSystemContext("eod-checkin");
     const response = await Promise.race([
       runAgent({
-        prompt:
-          "Send the end-of-day check-in as described in your instructions. " +
-          "In addition to the normal check-in, include one of the following prompts — " +
-          "vary it naturally based on context from recent daily logs: " +
-          "(1) If you don't have a good sense of how Justin has been feeling physically lately, " +
-          "ask about his body — how he's feeling, any tension, energy levels, etc. " +
-          "(2) Otherwise, default to a simple gratitude prompt — something like " +
-          "'What's something you were grateful for today?' or 'Anything stand out this week that you're thankful for?' " +
-          "Keep it casual and brief, like a friend checking in. Don't force both — just pick whichever feels right.",
+        prompt: "Send the end-of-day check-in as described in your instructions.",
         externalId: "cron:eod-checkin",
         systemContext,
       }),

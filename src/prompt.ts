@@ -152,16 +152,6 @@ export function buildSystemContext(
     "",
   );
 
-  // Soft behavioral nudge — gratitude awareness across all interactions
-  parts.push(
-    "> **Gratitude awareness:** Look for natural moments to invite a quick gratitude " +
-    "reflection — after wrapping up a topic, during check-ins, or when Justin is " +
-    "processing his day. It doesn't need its own section; a simple \"what went well?\" " +
-    "or noticing something positive from his recent logs is enough. " +
-    "Don't shoehorn it in — skip it entirely if the moment isn't right.",
-    "",
-  );
-
   if (skill) {
     parts.push(`# Skill: ${skillName}`, "", skill, "");
   }

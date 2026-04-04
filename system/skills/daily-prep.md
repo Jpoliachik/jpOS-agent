@@ -22,6 +22,7 @@ Call `message_user` exactly once with the brief. Sending it is the whole job —
 2. Identify the single most important first move — the thing he should open his laptop and do right now
 3. Check overdue only if something has a hard deadline TODAY that changes the day if missed. Otherwise, ignore entirely.
 4. Only include a body/energy note if there's a concrete recent pattern worth surfacing (e.g., "you've felt better on days you moved first"). One line, no prescription. Skip if nothing stands out.
+5. If something positive stands out from recent logs — a win, progress, a good moment — briefly call it out. Just a quick nod, not a gratitude section. Skip if nothing jumps out.
 
 ### Task filtering
 Todoist includes household chores, errands, and life admin. These are almost never the priority in the morning brief. Skip them unless they are genuinely time-sensitive today (e.g., a scheduled appointment, a specific deadline). Focus on work tasks, commitments with other people, or things with real consequences if missed today. "Water plants," "clean kitchen," etc. are not briefing material.
