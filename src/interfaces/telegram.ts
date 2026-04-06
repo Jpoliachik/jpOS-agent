@@ -2,7 +2,7 @@ import { Bot, Context } from "grammy";
 import { env } from "../config.js";
 import { runAgent } from "../agent.js";
 import { clearSession } from "../sessions.js";
-import { pushVaultChanges } from "../obsidian.js";
+import { pushVaultChanges, appendVoiceNote } from "../obsidian.js";
 import { transcribeAudio } from "../transcription.js";
 import { buildSystemContext } from "../prompt.js";
 import { writeFileSync, unlinkSync } from "node:fs";
@@ -418,6 +418,10 @@ export function createTelegramBot(): Bot {
 
       // Transcribe with Groq
       const transcription = await transcribeAudio(tempFilePath);
+
+      // Log transcript to Obsidian vault for safekeeping
+      appendVoiceNote({ transcript: transcription.text, duration: transcription.duration });
+      pushVaultChanges().catch((e) => console.error("Failed to push voice note to vault:", e));
 
       // Treat transcribed voice as a regular text message
       const externalId = `telegram:${ctx.from!.id}`;
