@@ -52,6 +52,7 @@ Todoist is mainly for personal, life, or non-project tasks — errands, appointm
 Do NOT create Todoist tasks for software project work.
 
 Rules:
+- **No duplicates.** Before creating any task, first call `todoist_list_tasks` (use a relevant filter like "today", "this week", or the target project) and review the results. If an existing task already covers what you're about to create — even if worded differently — do NOT create a new one. People often reference existing tasks casually without using the exact task name. When in doubt, skip creation.
 - Only create a task when there is a clear, actionable to-do
 - Be conservative — vague thoughts are not tasks
 - Set `due_string` using the date mentioned, or "today" if none — EXCEPT for shopping lists or store-related lists (e.g., grocery store, hardware store), which should have NO due date
