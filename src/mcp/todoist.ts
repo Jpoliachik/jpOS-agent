@@ -67,8 +67,7 @@ const tools = [
   },
   {
     name: "todoist_create_task",
-    description:
-      "Create a new task in Todoist. Automatically checks for duplicates — if a task with similar content already exists, returns the existing task instead of creating a new one.",
+    description: "Create a new task in Todoist",
     inputSchema: {
       type: "object",
       properties: {
@@ -103,57 +102,6 @@ const tools = [
   },
 ];
 
-/**
- * Normalize text for comparison: lowercase, strip punctuation, collapse whitespace.
- */
-function normalizeText(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/**
- * Check if a task with similar content already exists in Todoist.
- * Returns the existing task if found, otherwise null.
- */
-async function findDuplicateTask(
-  content: string,
-  projectId?: string
-): Promise<Record<string, unknown> | null> {
-  try {
-    // Fetch active tasks, scoped to project if specified
-    const params = new URLSearchParams();
-    if (projectId) params.append("project_id", projectId);
-    const qs = params.toString();
-    const tasks = (await todoistRequest(qs ? `/tasks?${qs}` : "/tasks")) as Array<
-      Record<string, unknown>
-    >;
-
-    if (!Array.isArray(tasks)) return null;
-
-    const normalizedNew = normalizeText(content);
-
-    for (const task of tasks) {
-      const existing = normalizeText(task.content as string);
-      // Exact match after normalization
-      if (existing === normalizedNew) return task;
-      // One contains the other (catches minor wording differences)
-      if (existing.includes(normalizedNew) || normalizedNew.includes(existing)) {
-        // Only match if the shorter string is at least 60% the length of the longer
-        const shorter = Math.min(existing.length, normalizedNew.length);
-        const longer = Math.max(existing.length, normalizedNew.length);
-        if (shorter / longer >= 0.6) return task;
-      }
-    }
-    return null;
-  } catch {
-    // If the check fails, allow task creation rather than blocking
-    return null;
-  }
-}
-
 async function handleToolCall(name: string, args: Record<string, unknown>): Promise<unknown> {
   switch (name) {
     case "todoist_list_tasks": {
@@ -177,17 +125,6 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         project_id: args.project_id as string | undefined,
         labels: args.labels as string[] | undefined,
       };
-
-      // Duplicate prevention: check if a task with similar content already exists
-      const duplicate = await findDuplicateTask(task.content, task.project_id);
-      if (duplicate) {
-        return {
-          skipped: true,
-          reason: "A task with similar content already exists",
-          existing_task: duplicate,
-        };
-      }
-
       return todoistRequest("/tasks", "POST", task);
     }
 
