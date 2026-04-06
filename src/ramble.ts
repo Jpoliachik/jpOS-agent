@@ -66,7 +66,7 @@ export async function processRecording(params: ProcessRecordingParams): Promise<
         })
       : undefined;
 
-    appendVoiceNote({ transcript, timestamp, duration, id, createdAt });
+    appendVoiceNote({ transcript, timestamp, duration, id, createdAt, source: "ramble" });
     await pushVaultChanges();
     console.log(`[ramble:${id}] Vault saved`);
 

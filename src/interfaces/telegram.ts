@@ -420,7 +420,7 @@ export function createTelegramBot(): Bot {
       const transcription = await transcribeAudio(tempFilePath);
 
       // Log transcript to Obsidian vault for safekeeping
-      appendVoiceNote({ transcript: transcription.text, duration: transcription.duration });
+      appendVoiceNote({ transcript: transcription.text, duration: transcription.duration, source: "telegram" });
       pushVaultChanges().catch((e) => console.error("Failed to push voice note to vault:", e));
 
       // Treat transcribed voice as a regular text message
