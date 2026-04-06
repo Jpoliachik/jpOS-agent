@@ -446,7 +446,7 @@ export function createTelegramBot(): Bot {
         });
         agentResponse = await runAgent({
           prompt: "Process the voice note transcript described in your instructions.",
-          externalId: "api:voice-notes",
+          externalId: `voice-note:${Date.now()}`,
           systemContext,
           onMessage: wrappedOnMessage,
         });

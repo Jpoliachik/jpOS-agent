@@ -76,7 +76,7 @@ export async function processRecording(params: ProcessRecordingParams): Promise<
     const result = await withTimeout(
       runAgent({
         prompt: "Process the voice note transcript described in your instructions.",
-        externalId: "api:voice-notes",
+        externalId: `voice-note:${id}`,
         systemContext,
       }).then(async (r) => {
         await pushVaultChanges();
