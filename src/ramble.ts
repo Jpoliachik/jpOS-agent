@@ -66,7 +66,7 @@ export async function processRecording(params: ProcessRecordingParams): Promise<
         })
       : undefined;
 
-    appendVoiceNote({ transcript, timestamp, duration, id, createdAt });
+    appendVoiceNote({ transcript, timestamp, duration, id, createdAt, source: "ramble" });
     await pushVaultChanges();
     console.log(`[ramble:${id}] Vault saved`);
 
@@ -76,7 +76,7 @@ export async function processRecording(params: ProcessRecordingParams): Promise<
     const result = await withTimeout(
       runAgent({
         prompt: "Process the voice note transcript described in your instructions.",
-        externalId: "api:voice-notes",
+        externalId: `voice-note:${id}`,
         systemContext,
       }).then(async (r) => {
         await pushVaultChanges();

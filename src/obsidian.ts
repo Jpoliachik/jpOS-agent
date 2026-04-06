@@ -173,6 +173,7 @@ interface AppendVoiceNoteParams {
   duration?: number;
   id?: string;
   createdAt?: string;
+  source?: string;
 }
 
 function formatDuration(seconds: number): string {
@@ -191,7 +192,7 @@ interface AppendVoiceNoteResult {
  * Pure file operation — call pushVaultChanges() after to persist.
  */
 export function appendVoiceNote(params: AppendVoiceNoteParams): AppendVoiceNoteResult {
-  const { transcript, timestamp, duration, id, createdAt } = params;
+  const { transcript, timestamp, duration, id, createdAt, source } = params;
 
   const voiceNotesPath = join(VAULT_PATH, VOICE_NOTES_DIR);
   if (!existsSync(voiceNotesPath)) {
@@ -220,8 +221,11 @@ export function appendVoiceNote(params: AppendVoiceNoteParams): AppendVoiceNoteR
     entry += ` (${formatDuration(duration)})`;
   }
   entry += `\n`;
-  if (id) {
-    entry += `> id: ${id}\n`;
+  const metadata: string[] = [];
+  if (source) metadata.push(`source: ${source}`);
+  if (id) metadata.push(`id: ${id}`);
+  if (metadata.length > 0) {
+    entry += metadata.map((m) => `> ${m}`).join("\n") + "\n";
   }
   entry += `\n${transcript}\n\n---\n\n`;
   appendFileSync(filePath, entry);
