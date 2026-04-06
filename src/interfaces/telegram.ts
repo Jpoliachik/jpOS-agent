@@ -2,7 +2,7 @@ import { Bot, Context } from "grammy";
 import { env } from "../config.js";
 import { runAgent } from "../agent.js";
 import { clearSession } from "../sessions.js";
-import { pushVaultChanges, appendVoiceNote } from "../obsidian.js";
+import { pushVaultChanges } from "../obsidian.js";
 import { transcribeAudio } from "../transcription.js";
 import { buildSystemContext } from "../prompt.js";
 import { writeFileSync, unlinkSync } from "node:fs";
@@ -400,23 +400,10 @@ export function createTelegramBot(): Bot {
     enqueueTextMessage(externalId, ctx.message.text, ctx);
   });
 
-  // Handle voice messages
+  // Handle voice messages — transcribe and treat as regular text messages
   bot.on("message:voice", async (ctx) => {
     const voice = ctx.message.voice;
     let tempFilePath: string | null = null;
-
-    let stopTyping: (() => void) | null = startTypingIndicator(ctx);
-    const noopFinalize = async () => {};
-    let messageSentViaCallback = false;
-    const onMessage = createOnMessageHandler(
-      ctx, noopFinalize,
-      () => stopTyping,
-      (fn) => { stopTyping = fn; },
-    );
-    const wrappedOnMessage = (text: string) => {
-      messageSentViaCallback = true;
-      onMessage(text);
-    };
 
     try {
       // Download voice file
@@ -432,39 +419,10 @@ export function createTelegramBot(): Bot {
       // Transcribe with Groq
       const transcription = await transcribeAudio(tempFilePath);
 
-      const { isDuplicate } = appendVoiceNote({
-        transcript: transcription.text,
-        duration: transcription.duration,
-      });
-
-      let agentResponse: { result: string };
-      if (isDuplicate) {
-        agentResponse = { result: "Duplicate voice note — already logged." };
-      } else {
-        const systemContext = buildSystemContext("voice-note", {
-          transcript: transcription.text,
-        });
-        agentResponse = await runAgent({
-          prompt: "Process the voice note transcript described in your instructions.",
-          externalId: `voice-note:${Date.now()}`,
-          systemContext,
-          onMessage: wrappedOnMessage,
-        });
-        await pushVaultChanges();
-      }
-
-      stopTyping?.();
-      stopTyping = null;
-
-      if (agentResponse.result && !messageSentViaCallback) {
-        await sendWithMarkdownFallback((parseMode) =>
-          ctx.reply(agentResponse.result, {
-            ...(parseMode && { parse_mode: parseMode as "Markdown" }),
-          }),
-        );
-      }
+      // Treat transcribed voice as a regular text message
+      const externalId = `telegram:${ctx.from!.id}`;
+      enqueueTextMessage(externalId, transcription.text, ctx);
     } catch (error) {
-      stopTyping?.();
       console.error("Voice message error:", error);
       await ctx.reply(
         `jpOS: Error processing voice message: ${error instanceof Error ? error.message : "Unknown error"}`
