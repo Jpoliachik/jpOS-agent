@@ -54,7 +54,10 @@ fly secrets set \
   TELEGRAM_BOT_TOKEN="your-token" \
   ALLOWED_TELEGRAM_USER_ID="your-user-id" \
   API_BEARER_TOKEN="your-api-token" \
-  TODOIST_API_TOKEN="your-todoist-token"
+  TODOIST_API_TOKEN="your-todoist-token" \
+  GROQ_API_KEY="your-groq-key" \
+  LINEAR_API_KEYS="lin_api_key1,lin_api_key2" \
+  RAMBLE_WEBHOOK_SECRET="copy-from-ramble-app-settings"
 ```
 
 ### 5. GitHub PAT for Obsidian Vault
@@ -109,13 +112,14 @@ npm run dev                # Runs with hot reload
 
 ## API Endpoints
 
-All endpoints (except /health) require Bearer token auth:
+### GET /health
+Health check (no auth required).
+
+### POST /agent
+General agent interaction. Requires Bearer token auth:
 ```
 Authorization: Bearer YOUR_API_TOKEN
 ```
-
-### POST /agent
-General agent interaction.
 
 ```json
 {
@@ -125,37 +129,22 @@ General agent interaction.
 }
 ```
 
-### POST /voice-note
-Process voice transcriptions with Obsidian logging and Telegram notifications.
+### POST /ramble/webhook
+Webhook for Ramble voice transcription app. Authenticated via `X-Webhook-Secret` header (not Bearer token). Copy the secret from the Ramble app's Settings screen and set it as `RAMBLE_WEBHOOK_SECRET` on Fly.io.
 
-**Flow:**
-1. Pulls Obsidian vault from GitHub
-2. Appends transcript to daily note (`voice-notes/YYYY-MM-DD.md`) based on `createdAt`
-3. Commits and pushes to GitHub
-4. Returns immediately, then async: runs agent and sends Telegram summary
+Returns `200 OK` immediately. Processing happens async: saves transcript to Obsidian vault, runs agent, sends Telegram summary.
 
 **Note:** Timezone is hardcoded to `America/New_York` in `src/obsidian.ts`.
 
 ```json
 {
-  "id": "uuid-string",
-  "createdAt": "2024-01-15T10:30:00Z",
+  "recording_id": "550e8400-e29b-41d4-a716-446655440000",
+  "created_at": "2024-01-15T10:30:00Z",
   "duration": 125.5,
-  "transcript": "I need to call mom tomorrow and finish the report by Friday"
+  "transcription": "I need to call mom tomorrow and finish the report by Friday",
+  "device_id": "7a2b3c4d-5e6f-7890-abcd-ef1234567890"
 }
 ```
-
-**Response:**
-```json
-{
-  "logged": true
-}
-```
-
-Returns `{"duplicate": true}` if the same `id` was already logged.
-
-### GET /health
-Health check (no auth required).
 
 ## Telegram Commands
 

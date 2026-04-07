@@ -29,6 +29,7 @@ export const env = {
   todoistApiToken: requireEnv("TODOIST_API_TOKEN"),
   linearApiKeys: requireEnv("LINEAR_API_KEYS"),
   groqApiKey: requireEnv("GROQ_API_KEY"),
+  rambleWebhookSecret: process.env.RAMBLE_WEBHOOK_SECRET || "",
   port: parseInt(process.env.PORT || "3000", 10),
   // App Store Connect (optional - tools disabled if not set)
   appStoreConnectKeyId: process.env.APP_STORE_CONNECT_KEY_ID || "",

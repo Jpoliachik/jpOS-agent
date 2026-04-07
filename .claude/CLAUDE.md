@@ -66,13 +66,12 @@ The vault contains data the agent reads and writes at runtime:
 
 - **`jpos-state.json`** (persistent, on-disk) — Small flags and config only: `lastDailyPrepDate`, feature toggles, etc.
 - **Sessions** (in-memory) — 30-min TTL, ephemeral.
-- **Ramble jobs** (in-memory) — Short-lived, actively mutated during processing.
 - **Obsidian vault** (persistent, git-backed) — Long-term memory, daily logs, voice notes, context.
 
 ## API Endpoints
 
-- `POST /voice-note` — Webhook for voice transcription apps (auth required)
-- `POST /agent` — General agent interaction with optional session persistence
+- `POST /ramble/webhook` — Ramble voice transcript webhook (auth via `X-Webhook-Secret` header, secret set as `RAMBLE_WEBHOOK_SECRET` on Fly.io)
+- `POST /agent` — General agent interaction with optional session persistence (Bearer token auth)
 - `GET /health` — Health check (no auth)
 
 ## Deployment
