@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import Fastify from "fastify";
 import bearerAuth from "@fastify/bearer-auth";
 import { env } from "../config.js";
@@ -5,15 +6,40 @@ import { runAgent } from "../agent.js";
 import { pushVaultChanges } from "../obsidian.js";
 import { processWebhook } from "../ramble.js";
 
+function verifyWebhookSignature(rawBody: Buffer, signature: string, secret: string): boolean {
+  const expected =
+    "sha256=" + crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  try {
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  } catch {
+    return false;
+  }
+}
+
 export async function createApiServer() {
   const server = Fastify({ logger: true });
+
+  // Capture raw body for HMAC signature verification
+  server.decorateRequest("rawBody", undefined);
+  server.addContentTypeParser(
+    "application/json",
+    { parseAs: "buffer" },
+    (req, body, done) => {
+      (req as any).rawBody = body;
+      try {
+        done(null, JSON.parse(body.toString()));
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    },
+  );
 
   // Health check (no auth required)
   server.get("/health", async () => {
     return { status: "ok" };
   });
 
-  // Ramble webhook (uses X-Webhook-Secret, not bearer auth)
+  // Ramble webhook (verified via HMAC-SHA256 signature)
   server.post<{
     Body: {
       recording_id: string;
@@ -23,8 +49,10 @@ export async function createApiServer() {
       device_id: string;
     };
   }>("/ramble/webhook", async (request, reply) => {
-    const secret = request.headers["x-webhook-secret"];
-    if (!env.rambleWebhookSecret || secret !== env.rambleWebhookSecret) {
+    const signature = request.headers["x-webhook-signature"] as string | undefined;
+    const rawBody = (request as any).rawBody as Buffer | undefined;
+    if (!env.rambleWebhookSecret || !signature || !rawBody ||
+        !verifyWebhookSignature(rawBody, signature, env.rambleWebhookSecret)) {
       return reply.status(401).send({ error: "Unauthorized" });
     }
 
