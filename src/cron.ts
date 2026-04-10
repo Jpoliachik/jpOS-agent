@@ -15,6 +15,9 @@ const WEEKLY_REVIEW_MINUTE = 0;
 const DAILY_PREP_TIMEOUT_MS = 5 * 60_000; // 5 minutes
 const EOD_CHECKIN_TIMEOUT_MS = 5 * 60_000; // 5 minutes
 const WEEKLY_REVIEW_TIMEOUT_MS = 10 * 60_000; // 10 minutes (reads 7 daily logs)
+const MONTHLY_REVIEW_HOUR = 20;
+const MONTHLY_REVIEW_MINUTE = 0;
+const MONTHLY_REVIEW_TIMEOUT_MS = 10 * 60_000; // 10 minutes
 
 function getTodayET(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: TIMEZONE });
@@ -163,6 +166,44 @@ async function runWeeklyReview(): Promise<void> {
   }
 }
 
+function getMonthKeyET(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: TIMEZONE }).slice(0, 7);
+}
+
+async function runMonthlyReview(): Promise<void> {
+  console.log("Running monthly review job...");
+
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Monthly review timed out after 10 minutes")), MONTHLY_REVIEW_TIMEOUT_MS)
+    );
+
+    const systemContext = buildSystemContext();
+    const response = await Promise.race([
+      runAgent({
+        prompt: "Run the month-in-review skill: compress the past month's weekly digests into a monthly summary and promote anything durable to memory.md.",
+        externalId: "cron:monthly-review",
+        systemContext,
+      }),
+      timeoutPromise,
+    ]);
+
+    await pushVaultChanges();
+
+    if (response.result) {
+      setState("lastMonthlyReviewMonth", getMonthKeyET());
+      console.log("Monthly review completed successfully");
+    } else {
+      console.error("Monthly review returned empty result");
+    }
+  } catch (error) {
+    console.error("Monthly review job failed:", error);
+    await sendTelegramMessage(
+      `jpOS: Monthly review failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
+}
+
 export function startCronJobs(): void {
   // Run at 6:30 AM Eastern time every day
   cron.schedule(`${CRON_MINUTE} ${CRON_HOUR} * * *`, runDailyPrep, {
@@ -179,7 +220,12 @@ export function startCronJobs(): void {
     timezone: TIMEZONE,
   });
 
-  console.log("Cron jobs started: daily prep at 6:30 AM Eastern, EOD check-in at 9:00 PM Eastern, weekly review Sunday 8:00 PM Eastern");
+  // Run at 8:00 PM Eastern time on the 1st of each month
+  cron.schedule(`${MONTHLY_REVIEW_MINUTE} ${MONTHLY_REVIEW_HOUR} 1 * *`, runMonthlyReview, {
+    timezone: TIMEZONE,
+  });
+
+  console.log("Cron jobs started: daily prep 6:30 AM, EOD check-in 9:00 PM, weekly review Sun 8:00 PM, monthly review 1st 8:00 PM (all Eastern)");
 
   // Check if we missed today's jobs (e.g., process restarted)
   const { hour, minute } = getCurrentHourMinuteET();
@@ -209,7 +255,16 @@ export function startCronJobs(): void {
       runWeeklyReview().catch((err) => console.error("Makeup weekly review failed:", err));
     }, 15_000);
   }
+  // Check if we missed this month's monthly review (1st only)
+  const dayOfMonth = new Date(new Date().toLocaleString("en-US", { timeZone: TIMEZONE })).getDate();
+  const isPastMonthlyReview = dayOfMonth === 1 && (hour > MONTHLY_REVIEW_HOUR || (hour === MONTHLY_REVIEW_HOUR && minute > MONTHLY_REVIEW_MINUTE));
+  if (isPastMonthlyReview && getState<string>("lastMonthlyReviewMonth") !== getMonthKeyET()) {
+    console.log("Missed this month's monthly review — running now");
+    setTimeout(() => {
+      runMonthlyReview().catch((err) => console.error("Makeup monthly review failed:", err));
+    }, 20_000);
+  }
 }
 
 // Export for manual testing
-export { runDailyPrep, runEodCheckin, runWeeklyReview };
+export { runDailyPrep, runEodCheckin, runWeeklyReview, runMonthlyReview };

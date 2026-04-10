@@ -22,7 +22,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VAULT_PATH, JPOS_DIR } from "./obsidian.js";
-import { loadDurableMemory, loadRecentMemory, loadWeeklyDigests } from "./memory.js";
+import { loadDurableMemory, loadRecentMemory, loadWeeklyDigests, loadMonthlyDigests } from "./memory.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -61,6 +61,13 @@ function weekFileString(): string {
   const dayOfYear = Math.floor((et.getTime() - jan1.getTime()) / 86_400_000) + 1;
   const weekNum = Math.ceil((dayOfYear + jan1.getDay()) / 7);
   return `${et.getFullYear()}-W${String(weekNum).padStart(2, "0")}.md`;
+}
+
+/**
+ * Return the month filename for the current month: YYYY-MM.md
+ */
+function monthFileString(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: TIMEZONE }).slice(0, 7) + ".md";
 }
 
 function readFileSafe(path: string): string | null {
@@ -118,6 +125,7 @@ export function buildSystemContext(
     time: timeString(),
     vault_path: VAULT_PATH,
     week_file: weekFileString(),
+    month_file: monthFileString(),
     ...Object.fromEntries(
       Object.entries(vars ?? {}).filter(([, v]) => v != null) as [string, string][],
     ),
@@ -134,6 +142,7 @@ export function buildSystemContext(
   }
 
   const durableMemory = loadDurableMemory();
+  const monthlyDigests = loadMonthlyDigests();
   const weeklyDigests = loadWeeklyDigests();
   const recentMemory = loadRecentMemory();
   const skill = skillName ? applyVars(loadSkill(skillName), templateVars) : "";
@@ -156,6 +165,10 @@ export function buildSystemContext(
     parts.push("# Memory", "", durableMemory, "");
   }
 
+  if (monthlyDigests) {
+    parts.push("# Monthly Summaries", "", monthlyDigests, "");
+  }
+
   if (weeklyDigests) {
     parts.push("# Weekly Digests", "", weeklyDigests, "");
   }
@@ -171,6 +184,9 @@ export function buildSystemContext(
     "",
     `> **Weekly digests** are stored at \`${join(VAULT_PATH, JPOS_DIR, "weekly-digest")}/YYYY-WXX.md\`. ` +
     "Only the last 4 weeks are loaded above. To recall older weeks, use Glob/Read to browse that directory.",
+    "",
+    `> **Monthly summaries** are stored at \`${join(VAULT_PATH, JPOS_DIR, "monthly-digest")}/YYYY-MM.md\`. ` +
+    "Only the last 3 months are loaded above. To recall older months, use Glob/Read to browse that directory.",
     "",
   );
 

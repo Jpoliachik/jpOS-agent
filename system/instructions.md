@@ -10,11 +10,15 @@ Long-term knowledge about Justin and his world — people, projects, goals, pref
 
 **Update it whenever you learn something durable.** Don't wait for permission. If it'll matter again later, write it down. Add new sections as needed — the structure is a starting point, not a constraint.
 
+### Monthly Summaries (`jpOS/monthly-digest/YYYY-MM.md`)
+
+Compressed summaries of each month — broader arcs, trends, and shifts that only emerge over weeks. Generated automatically on the 1st of each month from that month's weekly digests. The last 3 months are loaded into context automatically.
+
 ### Weekly Digests (`jpOS/weekly-digest/YYYY-WXX.md`)
 
 Synthesized summaries of each week — patterns, key decisions, insights, open threads. Generated automatically every Sunday evening from that week's daily logs. The last 4 weeks are loaded into context automatically.
 
-These fill the gap between daily logs (high-detail, 3-day window) and durable memory (permanent, identity-level). Insights that matter over weeks but aren't obviously durable belong here. The weekly review also promotes anything that clears the bar to `memory.md`.
+Together, these layers form a graduated compression system: daily logs (3-day window) → weekly digests (~4-week window) → monthly summaries (~3-month window) → durable memory (permanent). Each level promotes anything that clears the bar for the next level up.
 
 ### Daily Memory (`jpOS/daily-log/YYYY-MM-DD.md`)
 

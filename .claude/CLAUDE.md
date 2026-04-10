@@ -55,16 +55,20 @@ System prompts live in `system/` at the repo root. These are version-controlled 
 Claude Code skills that the agent can discover and invoke via the `Skill` tool during any conversation. These are NOT pre-loaded into system context — they load on demand when relevant.
 
 - `.claude/skills/weekly-review/SKILL.md` — Weekly digest synthesis (also triggered by cron Sunday 8 PM ET)
+- `.claude/skills/month-in-review/SKILL.md` — Monthly summary from weekly digests (also triggered by cron 1st of month 8 PM ET)
+- `.claude/skills/memory-prune/SKILL.md` — Review and prune stale memory.md entries
+- `.claude/skills/project-status/SKILL.md` — Pull project state from all available sources
 
 ### Template Variables
 
-`{{date}}`, `{{time}}`, `{{vault_path}}`, `{{week_file}}`, `{{transcript}}` are replaced at load time in `src/prompt.ts`.
+`{{date}}`, `{{time}}`, `{{vault_path}}`, `{{week_file}}`, `{{month_file}}`, `{{transcript}}` are replaced at load time in `src/prompt.ts`.
 
 ## Obsidian Vault Data (runtime-mutable)
 
 The vault contains data the agent reads and writes at runtime:
 
 - `jpOS/memory.md` — Durable memory (always loaded into system prompt)
+- `jpOS/monthly-digest/` — Monthly summaries (`YYYY-MM.md`), last 3 months loaded automatically
 - `jpOS/weekly-digest/` — Weekly digests (`YYYY-WXX.md`), last 4 weeks loaded automatically
 - `jpOS/daily-log/` — Daily log entries (`YYYY-MM-DD.md`), last 3 days loaded automatically
 - `jpOS/voice-notes/` — Daily voice note logs
@@ -72,7 +76,7 @@ The vault contains data the agent reads and writes at runtime:
 
 ## State Management
 
-- **`jpos-state.json`** (persistent, on-disk) — Small flags and config only: `lastDailyPrepDate`, `lastWeeklyReviewWeek`, feature toggles, etc.
+- **`jpos-state.json`** (persistent, on-disk) — Small flags and config only: `lastDailyPrepDate`, `lastWeeklyReviewWeek`, `lastMonthlyReviewMonth`, feature toggles, etc.
 - **Sessions** (in-memory) — 30-min TTL, ephemeral.
 - **Obsidian vault** (persistent, git-backed) — Long-term memory, daily logs, voice notes, context.
 

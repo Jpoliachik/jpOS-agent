@@ -15,7 +15,7 @@ This is not a productivity report. It's pattern recognition. What threads are em
 
 ## Steps
 
-1. **Read the past 7 daily logs** from `{{vault_path}}/jpOS/daily-log/`. Use Glob to find the files, then Read each one. If fewer than 7 exist for the period, work with what's there.
+1. **Read the past 7 daily logs** from `{{vault_path}}/jpOS/daily-log/`. Files are named `YYYY-MM-DD.md`. Work with what's there if fewer than 7 exist.
 
 2. **Read current `memory.md`** to understand what's already captured durably — don't repeat it.
 
