@@ -6,7 +6,8 @@ Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 
 ### Repo vs Obsidian vault: what goes where
 
-- **This repo (`system/`):** Durable, human-authored prompts — identity (`soul.md`), instructions (`instructions.md`), skills (`skills/*.md`). Version-controlled, reviewed in PRs.
+- **This repo (`system/`):** Durable, human-authored prompts — identity (`soul.md`), instructions (`instructions.md`), trigger-specific skills (`skills/*.md`). Version-controlled, reviewed in PRs.
+- **This repo (`.claude/skills/`):** On-demand Claude Code skills — discoverable by the agent and invocable via the `Skill` tool during any conversation. Use this for reusable capabilities that aren't tied to a specific trigger.
 - **This repo (`src/`):** Runtime code, tool call implementations, integrations, interfaces (Telegram, API), infrastructure.
 - **Obsidian vault:** Runtime-mutable agent data — memory (`memory.md`), daily logs (`daily-log/`), voice notes (`voice-notes/`), context files (`context/`). Anything the agent writes or modifies at runtime.
 
@@ -32,7 +33,7 @@ CLI tools (invoked via Bash) are more token-efficient than MCP tool definitions 
 
 - `src/agent.ts` - Agent SDK wrapper with session management
 - `src/prompt.ts` - Builds system prompt from repo system files + vault memory
-- `src/memory.ts` - Daily memory file reader (loads recent N days)
+- `src/memory.ts` - Memory file reader (durable memory, weekly digests, daily logs)
 - `src/interfaces/telegram.ts` - Telegram bot (grammy)
 - `src/interfaces/api.ts` - HTTP API (Fastify)
 - `src/mcp/todoist.ts` - Todoist MCP server
@@ -49,22 +50,29 @@ System prompts live in `system/` at the repo root. These are version-controlled 
 - `system/skills/eod-checkin.md` — End-of-day check-in prompt
 - `system/skills/message.md` — How to handle direct messages
 
+### On-Demand Skills (`.claude/skills/`)
+
+Claude Code skills that the agent can discover and invoke via the `Skill` tool during any conversation. These are NOT pre-loaded into system context — they load on demand when relevant.
+
+- `.claude/skills/weekly-review/SKILL.md` — Weekly digest synthesis (also triggered by cron Sunday 8 PM ET)
+
 ### Template Variables
 
-`{{date}}`, `{{time}}`, `{{vault_path}}`, `{{transcript}}` are replaced at load time in `src/prompt.ts`.
+`{{date}}`, `{{time}}`, `{{vault_path}}`, `{{week_file}}`, `{{transcript}}` are replaced at load time in `src/prompt.ts`.
 
 ## Obsidian Vault Data (runtime-mutable)
 
 The vault contains data the agent reads and writes at runtime:
 
 - `jpOS/memory.md` — Durable memory (always loaded into system prompt)
+- `jpOS/weekly-digest/` — Weekly digests (`YYYY-WXX.md`), last 4 weeks loaded automatically
 - `jpOS/daily-log/` — Daily log entries (`YYYY-MM-DD.md`), last 3 days loaded automatically
 - `jpOS/voice-notes/` — Daily voice note logs
 - `jpOS/context/` — Stable reference files (projects, people, goals — no assumed filenames)
 
 ## State Management
 
-- **`jpos-state.json`** (persistent, on-disk) — Small flags and config only: `lastDailyPrepDate`, feature toggles, etc.
+- **`jpos-state.json`** (persistent, on-disk) — Small flags and config only: `lastDailyPrepDate`, `lastWeeklyReviewWeek`, feature toggles, etc.
 - **Sessions** (in-memory) — 30-min TTL, ephemeral.
 - **Obsidian vault** (persistent, git-backed) — Long-term memory, daily logs, voice notes, context.
 

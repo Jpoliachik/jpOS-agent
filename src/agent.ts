@@ -55,7 +55,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
 
   // Build allowed tools list
   const allowedTools = [
-    "Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch",
+    "Read", "Write", "Edit", "Bash", "Glob", "Grep", "WebSearch", "WebFetch", "Skill",
     "mcp__send-message__message_user",
     "mcp__todoist__todoist_create_task",
     "mcp__todoist__todoist_list_tasks",

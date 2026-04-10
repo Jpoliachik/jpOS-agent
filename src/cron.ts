@@ -10,8 +10,11 @@ const CRON_HOUR = 6;
 const CRON_MINUTE = 30;
 const EOD_CRON_HOUR = 21;
 const EOD_CRON_MINUTE = 0;
+const WEEKLY_REVIEW_HOUR = 20;
+const WEEKLY_REVIEW_MINUTE = 0;
 const DAILY_PREP_TIMEOUT_MS = 5 * 60_000; // 5 minutes
 const EOD_CHECKIN_TIMEOUT_MS = 5 * 60_000; // 5 minutes
+const WEEKLY_REVIEW_TIMEOUT_MS = 10 * 60_000; // 10 minutes (reads 7 daily logs)
 
 function getTodayET(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: TIMEZONE });
@@ -117,6 +120,49 @@ async function runEodCheckin(): Promise<void> {
   }
 }
 
+function getWeekKeyET(): string {
+  const d = new Date();
+  const et = new Date(d.toLocaleString("en-US", { timeZone: TIMEZONE }));
+  const jan1 = new Date(et.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((et.getTime() - jan1.getTime()) / 86_400_000) + 1;
+  const weekNum = Math.ceil((dayOfYear + jan1.getDay()) / 7);
+  return `${et.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+}
+
+async function runWeeklyReview(): Promise<void> {
+  console.log("Running weekly review job...");
+
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Weekly review timed out after 10 minutes")), WEEKLY_REVIEW_TIMEOUT_MS)
+    );
+
+    const systemContext = buildSystemContext();
+    const response = await Promise.race([
+      runAgent({
+        prompt: "Run the weekly-review skill: synthesize the past 7 daily logs into a weekly digest and promote anything durable to memory.md.",
+        externalId: "cron:weekly-review",
+        systemContext,
+      }),
+      timeoutPromise,
+    ]);
+
+    await pushVaultChanges();
+
+    if (response.result) {
+      setState("lastWeeklyReviewWeek", getWeekKeyET());
+      console.log("Weekly review completed successfully");
+    } else {
+      console.error("Weekly review returned empty result");
+    }
+  } catch (error) {
+    console.error("Weekly review job failed:", error);
+    await sendTelegramMessage(
+      `jpOS: Weekly review failed: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
+}
+
 export function startCronJobs(): void {
   // Run at 6:30 AM Eastern time every day
   cron.schedule(`${CRON_MINUTE} ${CRON_HOUR} * * *`, runDailyPrep, {
@@ -128,7 +174,12 @@ export function startCronJobs(): void {
     timezone: TIMEZONE,
   });
 
-  console.log("Cron jobs started: daily prep at 6:30 AM Eastern, EOD check-in at 9:00 PM Eastern");
+  // Run at 8:00 PM Eastern time every Sunday
+  cron.schedule(`${WEEKLY_REVIEW_MINUTE} ${WEEKLY_REVIEW_HOUR} * * 0`, runWeeklyReview, {
+    timezone: TIMEZONE,
+  });
+
+  console.log("Cron jobs started: daily prep at 6:30 AM Eastern, EOD check-in at 9:00 PM Eastern, weekly review Sunday 8:00 PM Eastern");
 
   // Check if we missed today's jobs (e.g., process restarted)
   const { hour, minute } = getCurrentHourMinuteET();
@@ -148,7 +199,17 @@ export function startCronJobs(): void {
       runEodCheckin().catch((err) => console.error("Makeup EOD check-in failed:", err));
     }, 10_000);
   }
+
+  // Check if we missed this week's weekly review (Sunday only)
+  const dayOfWeek = new Date().toLocaleDateString("en-US", { timeZone: TIMEZONE, weekday: "short" });
+  const isPastWeeklyReview = dayOfWeek === "Sun" && (hour > WEEKLY_REVIEW_HOUR || (hour === WEEKLY_REVIEW_HOUR && minute > WEEKLY_REVIEW_MINUTE));
+  if (isPastWeeklyReview && getState<string>("lastWeeklyReviewWeek") !== getWeekKeyET()) {
+    console.log("Missed this week's weekly review — running now");
+    setTimeout(() => {
+      runWeeklyReview().catch((err) => console.error("Makeup weekly review failed:", err));
+    }, 15_000);
+  }
 }
 
 // Export for manual testing
-export { runDailyPrep, runEodCheckin };
+export { runDailyPrep, runEodCheckin, runWeeklyReview };

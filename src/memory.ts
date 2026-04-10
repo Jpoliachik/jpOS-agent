@@ -12,6 +12,7 @@ import { VAULT_PATH, JPOS_DIR } from "./obsidian.js";
 
 const MEMORY_FILE = join(JPOS_DIR, "memory.md");
 const DAILY_LOG_DIR = join(JPOS_DIR, "daily-log");
+const WEEKLY_DIGEST_DIR = join(JPOS_DIR, "weekly-digest");
 
 /**
  * Load the durable memory file (jpOS/memory.md).
@@ -23,6 +24,37 @@ export function loadDurableMemory(): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * Load the most recent weekly digest files, concatenated newest-first.
+ * Files are named YYYY-WXX.md (ISO week number).
+ */
+export function loadWeeklyDigests(weeks: number = 4): string {
+  const dir = join(VAULT_PATH, WEEKLY_DIGEST_DIR);
+  if (!existsSync(dir)) return "";
+
+  const files = readdirSync(dir)
+    .filter((f) => /^\d{4}-W\d{2}\.md$/.test(f))
+    .sort()
+    .reverse()
+    .slice(0, weeks);
+
+  if (files.length === 0) return "";
+
+  const sections: string[] = [];
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(dir, file), "utf-8").trim();
+      if (content) {
+        sections.push(content);
+      }
+    } catch {
+      // Skip unreadable files
+    }
+  }
+
+  return sections.join("\n\n---\n\n");
 }
 
 /**

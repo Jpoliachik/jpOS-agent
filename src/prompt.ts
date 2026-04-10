@@ -22,7 +22,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VAULT_PATH, JPOS_DIR } from "./obsidian.js";
-import { loadDurableMemory, loadRecentMemory } from "./memory.js";
+import { loadDurableMemory, loadRecentMemory, loadWeeklyDigests } from "./memory.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -48,6 +48,19 @@ function timeString(): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+/**
+ * Return the ISO week filename for the current week: YYYY-WXX.md
+ */
+function weekFileString(): string {
+  const d = new Date();
+  // Shift to ET for consistency with the rest of the system
+  const et = new Date(d.toLocaleString("en-US", { timeZone: TIMEZONE }));
+  const jan1 = new Date(et.getFullYear(), 0, 1);
+  const dayOfYear = Math.floor((et.getTime() - jan1.getTime()) / 86_400_000) + 1;
+  const weekNum = Math.ceil((dayOfYear + jan1.getDay()) / 7);
+  return `${et.getFullYear()}-W${String(weekNum).padStart(2, "0")}.md`;
 }
 
 function readFileSafe(path: string): string | null {
@@ -97,13 +110,14 @@ interface PromptVars {
  * with all template variables resolved.
  */
 export function buildSystemContext(
-  skillName: SkillName,
+  skillName?: SkillName,
   vars?: PromptVars,
 ): string {
   const templateVars: Record<string, string> = {
     date: todayString(),
     time: timeString(),
     vault_path: VAULT_PATH,
+    week_file: weekFileString(),
     ...Object.fromEntries(
       Object.entries(vars ?? {}).filter(([, v]) => v != null) as [string, string][],
     ),
@@ -120,8 +134,9 @@ export function buildSystemContext(
   }
 
   const durableMemory = loadDurableMemory();
+  const weeklyDigests = loadWeeklyDigests();
   const recentMemory = loadRecentMemory();
-  const skill = applyVars(loadSkill(skillName), templateVars);
+  const skill = skillName ? applyVars(loadSkill(skillName), templateVars) : "";
 
   const parts: string[] = [
     `**Current date:** ${templateVars.date}`,
@@ -141,18 +156,25 @@ export function buildSystemContext(
     parts.push("# Memory", "", durableMemory, "");
   }
 
+  if (weeklyDigests) {
+    parts.push("# Weekly Digests", "", weeklyDigests, "");
+  }
+
   if (recentMemory) {
     parts.push("# Daily Log", "", recentMemory, "");
   }
 
-  // Tell the agent where memory files live so it can look up older days on demand
+  // Tell the agent where memory files live so it can look up older ones on demand
   parts.push(
     `> **Daily log files** are stored at \`${join(VAULT_PATH, JPOS_DIR, "daily-log")}/YYYY-MM-DD.md\`. ` +
     "Only the last 3 days are loaded above. To recall older days, use Glob/Read to browse and read files in that directory.",
     "",
+    `> **Weekly digests** are stored at \`${join(VAULT_PATH, JPOS_DIR, "weekly-digest")}/YYYY-WXX.md\`. ` +
+    "Only the last 4 weeks are loaded above. To recall older weeks, use Glob/Read to browse that directory.",
+    "",
   );
 
-  if (skill) {
+  if (skill && skillName) {
     parts.push(`# Skill: ${skillName}`, "", skill, "");
   }
 

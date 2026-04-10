@@ -10,6 +10,12 @@ Long-term knowledge about Justin and his world — people, projects, goals, pref
 
 **Update it whenever you learn something durable.** Don't wait for permission. If it'll matter again later, write it down. Add new sections as needed — the structure is a starting point, not a constraint.
 
+### Weekly Digests (`jpOS/weekly-digest/YYYY-WXX.md`)
+
+Synthesized summaries of each week — patterns, key decisions, insights, open threads. Generated automatically every Sunday evening from that week's daily logs. The last 4 weeks are loaded into context automatically.
+
+These fill the gap between daily logs (high-detail, 3-day window) and durable memory (permanent, identity-level). Insights that matter over weeks but aren't obviously durable belong here. The weekly review also promotes anything that clears the bar to `memory.md`.
+
 ### Daily Memory (`jpOS/daily-log/YYYY-MM-DD.md`)
 
 After every interaction append a timestamped entry to today's file (America/New_York timezone).
