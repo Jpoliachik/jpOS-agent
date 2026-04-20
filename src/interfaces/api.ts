@@ -3,7 +3,7 @@ import Fastify from "fastify";
 import bearerAuth from "@fastify/bearer-auth";
 import { env } from "../config.js";
 import { runAgent } from "../agent.js";
-import { pushVaultChanges } from "../obsidian.js";
+import { requestSync } from "../vault-sync.js";
 import { processWebhook } from "../ramble.js";
 
 function verifyWebhookSignature(rawBody: Buffer, signature: string, secret: string): boolean {
@@ -104,7 +104,7 @@ export async function createApiServer() {
           systemContext: context,
         });
 
-        await pushVaultChanges();
+        requestSync();
 
         return {
           result: response.result,

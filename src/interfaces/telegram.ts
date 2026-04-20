@@ -2,7 +2,8 @@ import { Bot, Context } from "grammy";
 import { env } from "../config.js";
 import { runAgent } from "../agent.js";
 import { clearSession } from "../sessions.js";
-import { pushVaultChanges, appendVoiceNote } from "../obsidian.js";
+import { appendVoiceNote } from "../obsidian.js";
+import { requestSync } from "../vault-sync.js";
 import { transcribeAudio } from "../transcription.js";
 import { buildSystemContext } from "../prompt.js";
 import { writeFileSync, unlinkSync } from "node:fs";
@@ -243,7 +244,7 @@ async function processMessageQueue(externalId: string, queue: UserMessageQueue) 
       onMessage: wrappedOnMessage,
     });
 
-    await pushVaultChanges();
+    requestSync();
     await finalize();
     queue.stopTyping?.();
     queue.stopTyping = null;
@@ -364,7 +365,7 @@ export function createTelegramBot(): Bot {
         onMessage: wrappedOnMessage,
       });
 
-      await pushVaultChanges();
+      requestSync();
       await finalize();
       stopTyping?.();
       stopTyping = null;
@@ -421,7 +422,7 @@ export function createTelegramBot(): Bot {
 
       // Log transcript to Obsidian vault for safekeeping
       appendVoiceNote({ transcript: transcription.text, duration: transcription.duration, source: "telegram" });
-      pushVaultChanges().catch((e) => console.error("Failed to push voice note to vault:", e));
+      requestSync();
 
       // Treat transcribed voice as a regular text message
       const externalId = `telegram:${ctx.from!.id}`;

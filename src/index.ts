@@ -1,8 +1,9 @@
 import { env } from "./config.js";
-import { createTelegramBot } from "./interfaces/telegram.js";
+import { createTelegramBot, sendTelegramMessage } from "./interfaces/telegram.js";
 import { createApiServer } from "./interfaces/api.js";
 import { startCronJobs } from "./cron.js";
-import { ensureVaultCloned, startPeriodicSync } from "./obsidian.js";
+import { ensureVaultCloned } from "./obsidian.js";
+import { startVaultSync, stopVaultSync } from "./vault-sync.js";
 
 async function main() {
   console.log("Starting jpOS Agent...");
@@ -30,14 +31,15 @@ async function main() {
   // Start scheduled jobs
   startCronJobs();
 
-  // Start background vault sync (pull every hour)
-  startPeriodicSync();
+  // Start vault sync worker (debounced push + periodic pull, off the hot path)
+  startVaultSync({ notifier: sendTelegramMessage });
 
   // Graceful shutdown
   const shutdown = async () => {
     console.log("Shutting down...");
     await bot.stop();
     await server.close();
+    await stopVaultSync();
     process.exit(0);
   };
 

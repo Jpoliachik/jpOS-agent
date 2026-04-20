@@ -3,7 +3,8 @@
  * Logs transcript to vault, runs agent, notifies via Telegram.
  */
 
-import { pushVaultChanges, appendVoiceNote } from "./obsidian.js";
+import { appendVoiceNote } from "./obsidian.js";
+import { requestSync } from "./vault-sync.js";
 import { buildSystemContext } from "./prompt.js";
 import { runAgent } from "./agent.js";
 import { sendTelegramMessage } from "./interfaces/telegram.js";
@@ -47,7 +48,7 @@ async function processWebhookImpl(params: ProcessWebhookParams): Promise<void> {
       console.log(`[ramble:${recordingId}] Duplicate — skipping`);
       return;
     }
-    await pushVaultChanges();
+    requestSync();
     console.log(`[ramble:${recordingId}] Vault saved`);
 
     // 2. Skip agent if transcript is empty
@@ -64,8 +65,8 @@ async function processWebhookImpl(params: ProcessWebhookParams): Promise<void> {
         prompt: "Process the voice note transcript described in your instructions.",
         externalId: `voice-note:${recordingId}`,
         systemContext,
-      }).then(async (r) => {
-        await pushVaultChanges();
+      }).then((r) => {
+        requestSync();
         return r.messages.length > 0 ? r.messages.join("\n\n") : r.result;
       }),
       AGENT_TIMEOUT_MS,

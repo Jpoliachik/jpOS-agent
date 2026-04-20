@@ -1,6 +1,8 @@
 /**
- * Obsidian vault Git operations
- * Simple model: pull periodically, push after writes.
+ * Obsidian vault file helpers.
+ *
+ * All git sync lives in `vault-sync.ts`. This module only owns startup
+ * provisioning (SSH, git identity, clone) and local file operations.
  */
 
 import { exec } from "node:child_process";
@@ -27,8 +29,7 @@ export const VAULT_PATH = process.env.OBSIDIAN_VAULT_PATH || "/data/obsidian-vau
 export const JPOS_DIR = "jpOS";
 const VOICE_NOTES_DIR = join(JPOS_DIR, "voice-notes");
 const TIMEZONE = "America/New_York";
-const GIT_TIMEOUT_MS = 60_000;
-const PERIODIC_SYNC_INTERVAL_MS = 60 * 60_000; // 1 hour
+const CLONE_TIMEOUT_MS = 120_000;
 
 // ---------------------------------------------------------------------------
 // One-time setup
@@ -69,7 +70,9 @@ async function configureGit(): Promise<void> {
 }
 
 /**
- * One-time vault initialization. Call at startup before accepting requests.
+ * One-time vault provisioning. Clones the vault if the mounted volume is empty;
+ * otherwise trusts the local volume state and lets vault-sync.ts reconcile with
+ * remote on its first tick.
  */
 export async function ensureVaultCloned(): Promise<void> {
   await ensureSshConfigured();
@@ -77,10 +80,8 @@ export async function ensureVaultCloned(): Promise<void> {
 
   if (!existsSync(VAULT_PATH)) {
     console.log("Cloning Obsidian vault...");
-    await execAsync(`git clone ${getObsidianRepoUrl()} ${VAULT_PATH}`);
+    await execAsync(`git clone ${getObsidianRepoUrl()} ${VAULT_PATH}`, { timeout: CLONE_TIMEOUT_MS });
     console.log("Vault cloned successfully");
-  } else {
-    await pullVault();
   }
 
   const memoryDir = join(VAULT_PATH, JPOS_DIR, "memory");
@@ -88,66 +89,6 @@ export async function ensureVaultCloned(): Promise<void> {
     mkdirSync(memoryDir, { recursive: true });
     console.log("Created memory directory");
   }
-}
-
-// ---------------------------------------------------------------------------
-// Pull / Push
-// ---------------------------------------------------------------------------
-
-/**
- * Pull from remote. Remote wins on any conflict (hard reset).
- */
-export async function pullVault(): Promise<void> {
-  console.log("Pulling vault from remote...");
-  try {
-    await execAsync(`git -C ${VAULT_PATH} fetch origin`, { timeout: GIT_TIMEOUT_MS });
-    const { stdout: branch } = await execAsync(`git -C ${VAULT_PATH} rev-parse --abbrev-ref HEAD`, { timeout: GIT_TIMEOUT_MS });
-    await execAsync(`git -C ${VAULT_PATH} reset --hard origin/${branch.trim()}`, { timeout: GIT_TIMEOUT_MS });
-    console.log("Vault pulled");
-  } catch (err) {
-    console.warn("Vault pull failed (continuing):", err);
-  }
-}
-
-/**
- * Push any local changes to remote.
- * If push is rejected, rebase (local wins on conflict) and retry once.
- */
-export async function pushVaultChanges(): Promise<void> {
-  const { stdout: status } = await execAsync(`git -C ${VAULT_PATH} status --porcelain`, { timeout: GIT_TIMEOUT_MS });
-  if (!status.trim()) {
-    return; // nothing to push
-  }
-
-  await execAsync(`git -C ${VAULT_PATH} add -A`, { timeout: GIT_TIMEOUT_MS });
-  await execAsync(`git -C ${VAULT_PATH} commit -m "jpOS agent sync"`, { timeout: GIT_TIMEOUT_MS });
-
-  try {
-    await execAsync(`git -C ${VAULT_PATH} push`, { timeout: GIT_TIMEOUT_MS });
-    console.log("Vault changes pushed");
-  } catch {
-    // Push rejected — rebase and retry (local edits win on conflict)
-    console.warn("Push rejected, rebasing...");
-    await execAsync(`git -C ${VAULT_PATH} pull --rebase -X ours`, { timeout: GIT_TIMEOUT_MS });
-    await execAsync(`git -C ${VAULT_PATH} push`, { timeout: GIT_TIMEOUT_MS });
-    console.log("Vault changes pushed (after rebase)");
-  }
-}
-
-/**
- * Start background periodic sync. Pulls from remote every hour.
- * Call once at startup.
- */
-export function startPeriodicSync(): void {
-  setInterval(async () => {
-    try {
-      await pullVault();
-    } catch (err) {
-      console.error("Periodic vault sync failed:", err);
-    }
-  }, PERIODIC_SYNC_INTERVAL_MS);
-
-  console.log("Vault periodic sync started (every 1 hour)");
 }
 
 // ---------------------------------------------------------------------------
@@ -189,7 +130,7 @@ interface AppendVoiceNoteResult {
 
 /**
  * Append a voice note entry to the daily markdown file.
- * Pure file operation — call pushVaultChanges() after to persist.
+ * Pure file operation — call requestSync() from vault-sync.ts to persist.
  */
 export function appendVoiceNote(params: AppendVoiceNoteParams): AppendVoiceNoteResult {
   const { transcript, timestamp, duration, id, createdAt, source } = params;

@@ -2,7 +2,7 @@ import cron from "node-cron";
 import { runAgent } from "./agent.js";
 import { sendTelegramMessage } from "./interfaces/telegram.js";
 import { buildSystemContext } from "./prompt.js";
-import { pushVaultChanges } from "./obsidian.js";
+import { requestSync } from "./vault-sync.js";
 import { getState, setState } from "./state.js";
 
 const TIMEZONE = "America/New_York";
@@ -51,7 +51,7 @@ async function runDailyPrep(): Promise<void> {
       timeoutPromise,
     ]);
 
-    await pushVaultChanges();
+    requestSync();
 
     if (response.result) {
       const text = response.messages.length > 0
@@ -96,7 +96,7 @@ async function runEodCheckin(): Promise<void> {
       timeoutPromise,
     ]);
 
-    await pushVaultChanges();
+    requestSync();
 
     if (response.result) {
       const text = response.messages.length > 0
@@ -150,7 +150,7 @@ async function runWeeklyReview(): Promise<void> {
       timeoutPromise,
     ]);
 
-    await pushVaultChanges();
+    requestSync();
 
     if (response.result) {
       setState("lastWeeklyReviewWeek", getWeekKeyET());
@@ -188,7 +188,7 @@ async function runMonthlyReview(): Promise<void> {
       timeoutPromise,
     ]);
 
-    await pushVaultChanges();
+    requestSync();
 
     if (response.result) {
       setState("lastMonthlyReviewMonth", getMonthKeyET());
