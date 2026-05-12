@@ -34,26 +34,27 @@ CLI tools (invoked via Bash) are more token-efficient than MCP tool definitions 
 - `src/agent.ts` - Agent SDK wrapper with session management + auto-recall step
 - `src/prompt.ts` - Builds system prompt from repo system files + vault memory
 - `src/memory.ts` - **(legacy, being phased out)** File-based reader for vault digests/daily logs
-- `src/memory-store.ts` - **mem0 + Qdrant memory store.** Primary memory layer.
+- `src/memory-store.ts` - **Qdrant + OpenAI memory store.** Primary memory layer.
 - `src/interfaces/telegram.ts` - Telegram bot (grammy)
 - `src/interfaces/api.ts` - HTTP API (Fastify) + memory inspection endpoints
 - `src/mcp/memory.ts` - Memory MCP server (`remember`, `recall`, `list_memories`, `forget`, `update_memory`)
 - `src/mcp/todoist.ts` - Todoist MCP server
 - `src/obsidian.ts` - Git operations for Obsidian vault
 
-## Memory layer (mem0 + Qdrant)
+## Memory layer (Qdrant + OpenAI)
 
-The agent's long-term memory uses [mem0](https://github.com/mem0ai/mem0) backed by a self-hosted Qdrant vector store on Fly.
+The agent's long-term memory is a thin wrapper (~300 LOC in `src/memory-store.ts`) over a self-hosted Qdrant vector store and OpenAI embeddings. We previously tried mem0 here but ripped it out after their JS bundle's eager-import-every-provider design forced ~150 unused transitive deps.
 
 - **Vector store:** Qdrant — separate Fly app `jpos-qdrant`, reachable internally at `http://jpos-qdrant.internal:6333`. See `jpos-qdrant/README.md` for setup.
-- **LLM (for fact extraction + dedup):** `gpt-4.1-nano` via OpenAI (cheap; ~$0.001/write). Configurable via `MEM0_LLM_MODEL`.
-- **Embeddings:** `text-embedding-3-small` via OpenAI. Configurable via `MEM0_EMBEDDING_MODEL`.
-- **History DB:** SQLite at `/data/mem0-history.db` on Fly (tracks add/update/delete events).
-- **Single-user:** all memories written under `userId = "jp"`; use `metadata.source` (voice-note, telegram, daily-prep, etc.) to distinguish origin.
+- **Embeddings:** `text-embedding-3-small` via OpenAI (1536 dims). Configurable via `MEMORY_EMBEDDING_MODEL`.
+- **Dedup LLM:** `gpt-4.1-nano` via OpenAI — one call per `remember()` to decide ADD vs REPLACE vs NOOP against the top-K nearest existing memories (threshold 0.85 cosine). Configurable via `MEMORY_DEDUP_MODEL`.
+- **No extraction:** the agent is responsible for passing clean atomic facts to `remember`; the store doesn't extract or rewrite content. See `system/instructions.md`.
+- **Single-user:** all memories written under `userId = "jp"` (Qdrant payload field); use `source` (voice-note, telegram, daily-prep, etc.) and `category` payload fields to distinguish/filter.
+- **No history DB:** simpler than mem0; if we want change history later we can add it as another collection.
 
 ### Auto-recall
 
-`runAgent()` does a top-K (default 5) mem0 search on the incoming user message and injects results into the system prompt under a `# Recalled Memories` section. Fail-graceful: if Qdrant is down, the agent still responds without recalled context. Opt out by passing `autoRecall: false` (used for all cron jobs — their prompts are meta-instructions, not queries).
+`runAgent()` embeds the incoming user message, searches Qdrant for top-K (default 5), and injects results into the system prompt under a `# Recalled Memories` section. Fail-graceful: if Qdrant is down, the agent still responds without recalled context. Opt out by passing `autoRecall: false` (used for all cron jobs — their prompts are meta-instructions, not queries).
 
 ### Inspecting memory
 
@@ -67,11 +68,10 @@ The HTTP API exposes (Bearer-token auth):
 
 ### Required env vars
 
-- `OPENAI_API_KEY` (required) — for embeddings + mem0's extraction LLM
+- `OPENAI_API_KEY` (required) — for embeddings and the dedup LLM
 - `QDRANT_URL` (default `http://localhost:6333`; on Fly set to `http://jpos-qdrant.internal:6333`)
-- `MEM0_LLM_MODEL` (default `gpt-4.1-nano`)
-- `MEM0_EMBEDDING_MODEL` (default `text-embedding-3-small`)
-- `MEM0_HISTORY_DB_PATH` (default `./mem0-history.db`; on Fly set to `/data/mem0-history.db`)
+- `MEMORY_EMBEDDING_MODEL` (default `text-embedding-3-small`)
+- `MEMORY_DEDUP_MODEL` (default `gpt-4.1-nano`)
 
 ## System Prompts (in this repo)
 

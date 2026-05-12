@@ -1,5 +1,5 @@
 /**
- * End-to-end smoke test for the mem0 + Qdrant memory store.
+ * End-to-end smoke test for the Qdrant + OpenAI memory store.
  *
  * Prereqs:
  *   1. Qdrant running on localhost:6333
@@ -28,39 +28,49 @@ function divider(title: string) {
 }
 
 async function main() {
-  console.log(`Collection: ${COLLECTION_NAME}`);
-  console.log(`User ID:    ${JPOS_USER_ID}`);
-  console.log(`Qdrant URL: ${process.env.QDRANT_URL || "http://localhost:6333 (default)"}`);
-  console.log(`LLM model:  ${process.env.MEM0_LLM_MODEL || "gpt-4.1-nano (default)"}`);
+  console.log(`Collection:    ${COLLECTION_NAME}`);
+  console.log(`User ID:       ${JPOS_USER_ID}`);
+  console.log(`Qdrant URL:    ${process.env.QDRANT_URL || "http://localhost:6333 (default)"}`);
+  console.log(`Embed model:   ${process.env.MEMORY_EMBEDDING_MODEL || "text-embedding-3-small (default)"}`);
+  console.log(`Dedup model:   ${process.env.MEMORY_DEDUP_MODEL || "gpt-4.1-nano (default)"}`);
 
-  // --- 1. Write a couple memories ----------------------------------------
+  // --- 1. Write a few atomic facts ---------------------------------------
   divider("1. remember() — store a few facts");
 
   const r1 = await remember({
-    content: "I prefer dark mode in all my apps. Bright white screens hurt my eyes.",
+    content: "User prefers dark mode in all his apps. Bright white screens hurt his eyes.",
     source: "smoke-test",
     category: "preference",
   });
-  console.log(`Wrote ${r1.length} memories from preference note:`);
+  console.log(`Wrote ${r1.length} memories from preference fact:`);
   r1.forEach((m) => console.log(`  [${m.id.slice(0, 8)}] ${m.memory}`));
 
   const r2 = await remember({
     content:
-      "Working on jpOS — my personal AI agent on Fly.io with Telegram + HTTP interfaces. " +
-      "Currently rebuilding the memory layer around mem0 + Qdrant.",
+      "Justin is rebuilding jpOS's memory layer around a thin Qdrant + OpenAI wrapper " +
+      "(dropping mem0).",
     source: "smoke-test",
     category: "project",
   });
-  console.log(`\nWrote ${r2.length} memories from project note:`);
+  console.log(`\nWrote ${r2.length} memories from project fact:`);
   r2.forEach((m) => console.log(`  [${m.id.slice(0, 8)}] ${m.memory}`));
 
   const r3 = await remember({
-    content: "I drink black coffee every morning, no sugar, no milk.",
+    content: "Justin drinks black coffee every morning, no sugar, no milk.",
     source: "smoke-test",
     category: "preference",
   });
-  console.log(`\nWrote ${r3.length} memories from coffee note:`);
+  console.log(`\nWrote ${r3.length} memories from coffee fact:`);
   r3.forEach((m) => console.log(`  [${m.id.slice(0, 8)}] ${m.memory}`));
+
+  // Re-write a near-duplicate to exercise the dedup path
+  const r4 = await remember({
+    content: "User likes black coffee with no sugar in the morning.",
+    source: "smoke-test",
+    category: "preference",
+  });
+  console.log(`\nWrote ${r4.length} memories from near-duplicate (should NOOP or REPLACE):`);
+  r4.forEach((m) => console.log(`  [${m.id.slice(0, 8)}] ${m.memory}`));
 
   // --- 2. Search ----------------------------------------------------------
   divider("2. recall() — semantic search");

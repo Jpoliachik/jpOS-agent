@@ -12,15 +12,15 @@ Pull the current state of a project from all available sources and synthesize a 
 
 1. **Identify the project.** Use `$ARGUMENTS` if provided, or infer from conversation context.
 
-2. **Pull what mem0 knows about the project first.** Routing info (vault note path, repo, Linear workspace) and recent state live here:
+2. **Pull what the memory store knows about the project first.** Routing info (vault note path, repo, Linear workspace) and recent state live here:
    - `recall(query="<project name> routing canonical note repo workspace", category="project", top_k=10)` — gets routing + structural info
    - `recall(query="<project name> current status recent activity decisions", top_k=15)` — gets recent state, decisions, blockers
-   - If mem0 returns nothing useful, the project hasn't been captured yet — ask Justin and then `remember` what he tells you so the next call is easier.
+   - If the memory store returns nothing useful, the project hasn't been captured yet — ask Justin and then `remember` what he tells you so the next call is easier.
 
 3. **Gather from external sources** (use the routing info from step 2; check each, skip what doesn't exist):
 
    **Obsidian vault:**
-   - Read the project's canonical note (path from mem0)
+   - Read the project's canonical note (path from the memory store)
    - Check the "Current Thinking" and "Log" sections for recent state
 
    **GitHub:**
@@ -52,5 +52,5 @@ If something is unclear or you're curious about context you can't find, ask. Jus
 ## Notes
 
 - Not every project has every source. A hobby shader project won't have Linear issues. A work project might not have a vault note yet. Work with what's available.
-- If you can't find the project at all, say so and ask Justin for pointers — this signals that the routing info isn't in mem0 yet.
-- When you discover new project info (a repo URL, a status change, a new link), call `remember(content=..., source=..., category="project")`. Don't wait for permission — mem0 dedupes so over-writing is cheap.
+- If you can't find the project at all, say so and ask Justin for pointers — this signals that the routing info isn't in the memory store yet.
+- When you discover new project info (a repo URL, a status change, a new link), call `remember(content=..., source=..., category="project")`. Don't wait for permission — the memory store dedupes so over-writing is cheap.

@@ -2,15 +2,15 @@
 /**
  * Memory MCP Server
  *
- * Exposes the mem0-backed memory store to the agent as tool calls:
- *   - remember:      store something to long-term memory
+ * Exposes the Qdrant-backed memory store to the agent as tool calls:
+ *   - remember:      store an atomic fact to long-term memory
  *   - recall:        semantic search over past memories
  *   - list_memories: list recent / filtered memories
  *   - forget:        delete a memory by id
  *   - update_memory: rewrite a memory's content
  *
- * Env: OPENAI_API_KEY (required), QDRANT_URL, MEM0_LLM_MODEL,
- * MEM0_EMBEDDING_MODEL, MEM0_HISTORY_DB_PATH.
+ * Env: OPENAI_API_KEY (required), QDRANT_URL, MEMORY_EMBEDDING_MODEL,
+ * MEMORY_DEDUP_MODEL.
  */
 
 import {
@@ -25,16 +25,19 @@ const tools = [
   {
     name: "remember",
     description:
-      "Store something to long-term memory. Use when the user shares a preference, " +
-      "fact about themselves, a decision, a commitment, or anything you should know " +
-      "in future conversations. mem0 will extract atomic facts from the content unless " +
-      "infer=false (in which case the content is stored verbatim as a single memory).",
+      "Store an atomic fact to long-term memory. Pass a single well-formed fact " +
+      "in third person (e.g. \"User prefers dark mode\"), not raw conversation text " +
+      "or multiple facts in one call. On write, the store searches for near-duplicates " +
+      "and asks an LLM whether to ADD (default), REPLACE an existing memory with this " +
+      "clearer/updated version, or NOOP if it's already captured.",
     inputSchema: {
       type: "object",
       properties: {
         content: {
           type: "string",
-          description: "The raw text or observation to remember.",
+          description:
+            "A single atomic fact, already formatted as a complete sentence in " +
+            "third person. Split multiple facts into multiple remember() calls.",
         },
         source: {
           type: "string",
@@ -48,12 +51,11 @@ const tools = [
             "Optional category tag (e.g., 'preference', 'project', 'person'). " +
             "Used for filtering during recall.",
         },
-        infer: {
+        skip_dedup: {
           type: "boolean",
           description:
-            "If true (default), mem0's LLM extracts atomic facts from content and " +
-            "decides whether to add/update/delete existing memories. " +
-            "If false, content is stored verbatim as a single memory.",
+            "Skip the dedup LLM call and just ADD a new memory. Default false. " +
+            "Only set true for batch imports / migration where you know there's no conflict.",
         },
       },
       required: ["content"],
@@ -135,7 +137,7 @@ interface ToolArgs {
   content?: string;
   source?: string;
   category?: string;
-  infer?: boolean;
+  skip_dedup?: boolean;
   query?: string;
   top_k?: number;
   limit?: number;
@@ -150,7 +152,7 @@ async function handleToolCall(name: string, args: ToolArgs): Promise<unknown> {
         content: args.content,
         source: args.source,
         category: args.category,
-        infer: args.infer,
+        skipDedup: args.skip_dedup,
       });
       return { added: items.length, memories: items };
     }

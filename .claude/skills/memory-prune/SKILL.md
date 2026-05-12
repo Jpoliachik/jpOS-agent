@@ -1,11 +1,11 @@
 ---
 name: memory-prune
-description: Review mem0 long-term memory for stale, outdated, or redundant entries and prune them. Run periodically or on demand to keep memory clean and current.
+description: Review long-term memory for stale, outdated, or redundant entries and prune them. Run periodically or on demand to keep memory clean and current.
 ---
 
 # Memory Prune
 
-Review long-term memory in mem0 and remove or update entries that are stale, outdated, redundant, contradicted, or no longer useful. mem0's automatic dedup catches the obvious overlaps on write, but it doesn't catch things that have gone stale over time — that's what this skill is for.
+Review long-term memory and remove or update entries that are stale, outdated, redundant, contradicted, or no longer useful. The memory store's automatic dedup catches the obvious overlaps on write, but it doesn't catch things that have gone stale over time — that's what this skill is for.
 
 ## Steps
 
@@ -18,7 +18,7 @@ Review long-term memory in mem0 and remove or update entries that are stale, out
    - **Outdated**: facts that have changed (old project status, shifted goals, abandoned preferences)
    - **Contradicted**: directly conflicts with a newer memory and the newer one is correct
    - **Redundant**: duplicated by another memory that says the same thing more clearly
-   - **Too granular**: hyper-specific details from a one-time event that don't need to persist (mem0's extractor occasionally over-stores)
+   - **Too granular**: hyper-specific details from a one-time event that don't need to persist
 
 4. **Act on each flag:**
    - **Update** an outdated fact: `update_memory(memory_id, new_content)` — preferred over delete+rewrite for facts that just changed.
@@ -36,7 +36,7 @@ Review long-term memory in mem0 and remove or update entries that are stale, out
 
 **Background / cron (no active conversation):**
 - Do NOT message Justin. Silent processing.
-- Be **conservative** — when in doubt, keep it. A slightly bloated mem0 is better than accidentally deleting something that matters.
+- Be **conservative** — when in doubt, keep it. A slightly bloated the memory store is better than accidentally deleting something that matters.
 - Only prune things you're confident are stale: finished projects still appearing as active, people/contexts that haven't shown up in logs for months, clearly outdated preferences.
 - Append a one-line note to today's daily log so there's a record of what was pruned.
 
@@ -45,5 +45,5 @@ Review long-term memory in mem0 and remove or update entries that are stale, out
 - **Identity-level facts** (personality, core preferences, long-term goals) — even if not recently referenced.
 - **Relationship context** (who people are, how Justin relates to them) — unless you're confident the relationship is no longer relevant.
 - **Project routing info** (which vault note, which repo, which Linear workspace) — even for paused projects, keep it until the project is explicitly archived.
-- **Anything pre-2026-05** that came from the initial migration of `memory.md` — these were promoted to mem0 with intent; don't second-guess them in early passes.
+- **Anything pre-2026-05** that came from the initial migration of `memory.md` — these were promoted to the memory store with intent; don't second-guess them in early passes.
 - **Anything you're unsure about** — when running in background, always err on the side of keeping.

@@ -17,8 +17,9 @@
     "fastify": "^4.26.0",
     "grammy": "^1.41.1",
     "groq-sdk": "^0.37.0",
-    "mem0ai": "^3.0.3",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "@qdrant/js-client-rest": "^1.13.0",
+    "openai": "^4.93.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
