@@ -19,7 +19,9 @@ primary_region = "ord"
   image = "qdrant/qdrant:latest"
 
 [env]
-  # Bind Qdrant on all interfaces so .internal DNS reaches it.
+  # Bind to all interfaces, dual-stack. The default ("0.0.0.0") is IPv4-only,
+  # which means traffic over Fly's .internal DNS (IPv6) gets refused.
+  QDRANT__SERVICE__HOST = "::"
   QDRANT__SERVICE__HTTP_PORT = "6333"
   QDRANT__SERVICE__GRPC_PORT = "6334"
   # Keep telemetry off for a personal-data store.
