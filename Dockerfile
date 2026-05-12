@@ -17,7 +17,8 @@ ENV PATH="/root/.claude/bin:${PATH}"
 WORKDIR /app
 
 # Copy package files and install dependencies
-COPY package*.json ./
+# .npmrc enables legacy-peer-deps for mem0's stale groq-sdk pin
+COPY package*.json .npmrc ./
 RUN npm install
 
 # Copy source and build

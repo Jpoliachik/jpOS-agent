@@ -47,6 +47,7 @@ async function runDailyPrep(): Promise<void> {
         prompt: "Generate the daily prep briefing as described in your instructions.",
         externalId: "cron:daily-prep",
         systemContext,
+        autoRecall: false,
       }),
       timeoutPromise,
     ]);
@@ -92,6 +93,7 @@ async function runEodCheckin(): Promise<void> {
         prompt: "Send the end-of-day check-in as described in your instructions.",
         externalId: "cron:eod-checkin",
         systemContext,
+        autoRecall: false,
       }),
       timeoutPromise,
     ]);
@@ -146,6 +148,7 @@ async function runWeeklyReview(): Promise<void> {
         prompt: "Run the weekly-review skill: synthesize the past 7 daily logs into a weekly digest and promote anything durable to memory.md.",
         externalId: "cron:weekly-review",
         systemContext,
+        autoRecall: false,
       }),
       timeoutPromise,
     ]);
@@ -184,6 +187,7 @@ async function runMonthlyReview(): Promise<void> {
         prompt: "Run the month-in-review skill: compress the past month's weekly digests into a monthly summary and promote anything durable to memory.md.",
         externalId: "cron:monthly-review",
         systemContext,
+        autoRecall: false,
       }),
       timeoutPromise,
     ]);

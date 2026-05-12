@@ -11,12 +11,14 @@ This is a wellness pulse, not a productivity review. The goal is to build embodi
 
 Call `message_user` exactly once with the check-in message. Sending it is the whole job — don't hedge, don't add caveats about delivery.
 
+> **Note on memory:** This skill runs from a cron, which means **auto-recall is OFF** — you don't get a `# Recalled Memories` section for free. You must call `recall` explicitly to load context for the check-in.
+
 ## Instructions
 
-- Read today's daily log and recent memory for context — what happened today, any physical state mentions, energy patterns, notable events
+- **Load today's context.** Read today's daily log file from `jpOS/daily-log/YYYY-MM-DD.md`, and call `recall(query="today's energy and physical state", category="health", top_k=5)` plus `recall(query="this week's notable events", top_k=8)` to surface relevant memory. Skip Justin's day-recap if no signal — better to ask a generic body question than fabricate context.
 - Ask 1-2 short, open-ended questions. Lead with the body or felt sense when possible.
 - Let the context drive the questions. If today was stressful (e.g., sick dog, hard sprint, long screen day), ask into that. If it was a good movement day, follow that thread. Don't ask generic questions when you have real context.
-- Keep the tone warm and casual — friend checking in, not coach running a protocol
+- Keep the tone warm and casual — friend checking in, not coach running a protocol.
 - The message should be short. 2-4 sentences max.
 
 ## Question guidance

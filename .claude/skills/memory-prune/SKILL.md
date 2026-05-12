@@ -1,46 +1,49 @@
 ---
 name: memory-prune
-description: Review memory.md for stale, outdated, or redundant entries and prune them. Run periodically or on demand to keep durable memory clean and current.
+description: Review mem0 long-term memory for stale, outdated, or redundant entries and prune them. Run periodically or on demand to keep memory clean and current.
 ---
 
 # Memory Prune
 
-Review `memory.md` and remove or update entries that are stale, outdated, redundant, or no longer useful. Memory grows but rarely shrinks — this skill is the counterweight.
+Review long-term memory in mem0 and remove or update entries that are stale, outdated, redundant, contradicted, or no longer useful. mem0's automatic dedup catches the obvious overlaps on write, but it doesn't catch things that have gone stale over time — that's what this skill is for.
 
 ## Steps
 
-1. **Read the full `memory.md`** from `{{vault_path}}/jpOS/memory.md`.
+1. **Sweep recent memories.** Call `list_memories(limit=200)` to get a broad view. Optionally narrow with `source=` or `category=` if you want to focus a pass (e.g. just preferences, or just project-related entries).
 
-2. **Read recent context** — skim the last few weekly digests and daily logs to understand what's current. This helps you judge what's stale vs. what's still active.
+2. **Cross-check with recent reality.** Skim the last 1-2 weeks of `jpOS/daily-log/` to ground yourself in what's actually been happening. Old memories about "current" projects, people, or routines may have quietly become stale.
 
-3. **Evaluate each section and entry.** Flag anything that is:
-   - **Stale**: References projects, people, or contexts that are no longer active
-   - **Outdated**: Facts that have changed (e.g., old project status, shifted goals, outdated preferences)
-   - **Redundant**: Duplicated information, or things now captured better elsewhere
-   - **Too granular**: Details that were useful short-term but don't need to live in durable memory (these belong in weekly digests or daily logs, not memory.md)
+3. **Evaluate each entry.** Flag anything that is:
+   - **Stale**: references projects, people, or contexts that are no longer active (haven't appeared in logs or other memories for ~2+ months)
+   - **Outdated**: facts that have changed (old project status, shifted goals, abandoned preferences)
+   - **Contradicted**: directly conflicts with a newer memory and the newer one is correct
+   - **Redundant**: duplicated by another memory that says the same thing more clearly
+   - **Too granular**: hyper-specific details from a one-time event that don't need to persist (mem0's extractor occasionally over-stores)
 
-4. **Edit memory.md** — remove stale entries, update outdated ones, consolidate redundant sections. Preserve the structure and formatting conventions.
+4. **Act on each flag:**
+   - **Update** an outdated fact: `update_memory(memory_id, new_content)` — preferred over delete+rewrite for facts that just changed.
+   - **Delete** stale, contradicted, or redundant entries: `forget(memory_id)`.
+   - **Leave alone** anything you're not certain about — when running in the background, default to keeping.
 
-5. **Report what you did** (see Autonomy section below).
+5. **Report what you did** (see Autonomy section).
 
 ## Autonomy
 
-This skill operates differently depending on context:
-
 **Mid-conversation (Justin is present):**
-- Ask clarifying questions for entries you're genuinely unsure about — "Is [project] still active?" or "You mentioned [X] a while back, still relevant?"
-- You can be more aggressive with pruning when you can verify in real time
-- Message Justin with a brief summary of what you pruned and why
+- Ask clarifying questions for entries you're genuinely unsure about: "Is [project] still active?" or "You mentioned [X] a while back, still relevant?"
+- Be more aggressive — you can verify with him in real time.
+- Message Justin with a brief summary at the end: "Pruned 12 memories. 8 stale project entries from [project], 3 outdated preferences, 1 contradiction. Updated 4 others."
 
 **Background / cron (no active conversation):**
 - Do NOT message Justin. Silent processing.
-- Be **conservative** — when in doubt, keep it. A slightly bloated memory is better than accidentally deleting something that matters.
-- Only prune things you're confident are stale: finished projects still listed as active, people/contexts that haven't appeared in logs for months, clearly outdated facts
-- Leave a brief note in the daily log about what was pruned, so there's a record
+- Be **conservative** — when in doubt, keep it. A slightly bloated mem0 is better than accidentally deleting something that matters.
+- Only prune things you're confident are stale: finished projects still appearing as active, people/contexts that haven't shown up in logs for months, clearly outdated preferences.
+- Append a one-line note to today's daily log so there's a record of what was pruned.
 
 ## What NOT to prune
 
-- Identity-level information (personality, core preferences, long-term goals) — even if it hasn't been referenced recently
-- Relationship context (people, how Justin relates to them) — unless you're confident the relationship is no longer relevant
-- Project routing information — even for paused projects, the routing table should stay until the project is explicitly archived
-- Anything you're not sure about — when running in background, always err on the side of keeping
+- **Identity-level facts** (personality, core preferences, long-term goals) — even if not recently referenced.
+- **Relationship context** (who people are, how Justin relates to them) — unless you're confident the relationship is no longer relevant.
+- **Project routing info** (which vault note, which repo, which Linear workspace) — even for paused projects, keep it until the project is explicitly archived.
+- **Anything pre-2026-05** that came from the initial migration of `memory.md` — these were promoted to mem0 with intent; don't second-guess them in early passes.
+- **Anything you're unsure about** — when running in background, always err on the side of keeping.
