@@ -5,6 +5,13 @@ import { env } from "../config.js";
 import { runAgent } from "../agent.js";
 import { requestSync } from "../vault-sync.js";
 import { processWebhook } from "../ramble.js";
+import {
+  listMemories,
+  recall,
+  forget,
+  remember,
+  getMemoryById,
+} from "../memory-store.js";
 
 function verifyWebhookSignature(rawBody: Buffer, signature: string, secret: string): boolean {
   const expected =
@@ -81,7 +88,126 @@ export async function createApiServer() {
       keys: new Set([env.apiBearerToken]),
     });
 
-    // Main agent endpoint
+    // ---- Memory inspection / management ---------------------------------
+    // List recent memories. Optional filters: ?source=&category=&limit=
+    app.get<{
+      Querystring: { source?: string; category?: string; limit?: string };
+    }>("/memory", async (request, reply) => {
+      try {
+        const { source, category, limit } = request.query;
+        const filters: Record<string, unknown> = {};
+        if (source) filters.source = source;
+        if (category) filters.category = category;
+        const memories = await listMemories({
+          limit: limit ? parseInt(limit, 10) : 50,
+          filters: Object.keys(filters).length > 0 ? filters : undefined,
+        });
+        return { count: memories.length, memories };
+      } catch (error) {
+        return reply.status(500).send({
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    // Semantic search. ?q=...&topK=...&source=&category=
+    app.get<{
+      Querystring: { q?: string; topK?: string; source?: string; category?: string };
+    }>("/memory/search", async (request, reply) => {
+      const { q, topK, source, category } = request.query;
+      if (!q) {
+        return reply.status(400).send({ error: "query param 'q' is required" });
+      }
+      try {
+        const filters: Record<string, unknown> = {};
+        if (source) filters.source = source;
+        if (category) filters.category = category;
+        const memories = await recall({
+          query: q,
+          topK: topK ? parseInt(topK, 10) : 10,
+          filters: Object.keys(filters).length > 0 ? filters : undefined,
+        });
+        return { count: memories.length, memories };
+      } catch (error) {
+        return reply.status(500).send({
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    // Aggregate stats: count by source and category
+    app.get("/memory/stats", async (_request, reply) => {
+      try {
+        const all = await listMemories({ limit: 10000 });
+        const bySource: Record<string, number> = {};
+        const byCategory: Record<string, number> = {};
+        for (const m of all) {
+          const meta = m.metadata as Record<string, unknown> | undefined;
+          const src = (meta?.source as string) || "(none)";
+          const cat = (meta?.category as string) || "(none)";
+          bySource[src] = (bySource[src] ?? 0) + 1;
+          byCategory[cat] = (byCategory[cat] ?? 0) + 1;
+        }
+        return {
+          total: all.length,
+          bySource,
+          byCategory,
+        };
+      } catch (error) {
+        return reply.status(500).send({
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    // Get a single memory by id
+    app.get<{ Params: { id: string } }>(
+      "/memory/:id",
+      async (request, reply) => {
+        try {
+          const memory = await getMemoryById(request.params.id);
+          if (!memory) return reply.status(404).send({ error: "Not found" });
+          return memory;
+        } catch (error) {
+          return reply.status(500).send({
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      },
+    );
+
+    // Manual write (mostly for debugging / seeding)
+    app.post<{
+      Body: { content: string; source?: string; category?: string; infer?: boolean };
+    }>("/memory", async (request, reply) => {
+      const { content, source, category, infer } = request.body;
+      if (!content) return reply.status(400).send({ error: "content required" });
+      try {
+        const memories = await remember({ content, source, category, infer });
+        return { added: memories.length, memories };
+      } catch (error) {
+        return reply.status(500).send({
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    // Delete a memory by id
+    app.delete<{ Params: { id: string } }>(
+      "/memory/:id",
+      async (request, reply) => {
+        try {
+          await forget(request.params.id);
+          return { success: true, id: request.params.id };
+        } catch (error) {
+          return reply.status(500).send({
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      },
+    );
+
+    // ---- Main agent endpoint --------------------------------------------
     app.post<{
       Body: {
         prompt: string;

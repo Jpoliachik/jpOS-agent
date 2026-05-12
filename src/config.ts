@@ -31,6 +31,12 @@ export const env = {
   groqApiKey: requireEnv("GROQ_API_KEY"),
   rambleWebhookSecret: process.env.RAMBLE_WEBHOOK_SECRET || "",
   port: parseInt(process.env.PORT || "3000", 10),
+  // mem0 memory layer (Qdrant vector store + OpenAI for LLM + embeddings)
+  openaiApiKey: requireEnv("OPENAI_API_KEY"),
+  qdrantUrl: process.env.QDRANT_URL || "http://localhost:6333",
+  mem0LlmModel: process.env.MEM0_LLM_MODEL || "gpt-4.1-nano",
+  mem0EmbeddingModel: process.env.MEM0_EMBEDDING_MODEL || "text-embedding-3-small",
+  mem0HistoryDbPath: process.env.MEM0_HISTORY_DB_PATH || "./mem0-history.db",
   // App Store Connect (optional - tools disabled if not set)
   appStoreConnectKeyId: process.env.APP_STORE_CONNECT_KEY_ID || "",
   appStoreConnectIssuerId: process.env.APP_STORE_CONNECT_ISSUER_ID || "",

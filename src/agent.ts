@@ -1,6 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { getSession, setSession } from "./sessions.js";
 import { env } from "./config.js";
+import { recall } from "./memory-store.js";
 import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -16,18 +17,80 @@ interface RunAgentParams {
   prompt: string;
   externalId: string;
   systemContext?: string;
+  /**
+   * Whether to auto-recall relevant memories from mem0 based on `prompt`
+   * and inject them into the system prompt. Defaults to true.
+   * Set false for cron jobs where the prompt is an instruction, not a query.
+   */
+  autoRecall?: boolean;
+  /** Max memories to surface in auto-recall. Defaults to 5. */
+  autoRecallTopK?: number;
   /** Called with accumulated text as streaming deltas arrive */
   onTextDelta?: (accumulatedText: string) => void;
   /** Called immediately when the agent sends a message via the message_user tool */
   onMessage?: (text: string) => void;
 }
 
+/**
+ * Search mem0 for memories relevant to `prompt` and format them as a
+ * system-prompt section. Returns empty string if mem0 is unreachable or returns
+ * no hits — the agent should still respond, just without recalled context.
+ */
+async function autoRecallSection(prompt: string, topK: number): Promise<string> {
+  try {
+    const memories = await recall({ query: prompt, topK });
+    if (memories.length === 0) return "";
+
+    const lines = memories.map((m) => {
+      const meta = m.metadata as Record<string, unknown> | undefined;
+      const source = meta?.source ? ` (${meta.source})` : "";
+      const score = m.score != null ? ` [score=${m.score.toFixed(2)}]` : "";
+      return `- ${m.memory}${source}${score}`;
+    });
+
+    return [
+      "# Recalled Memories",
+      "",
+      `*The following ${memories.length} memories surfaced as most relevant to the user's message. Use them as context but verify if anything seems stale.*`,
+      "",
+      ...lines,
+      "",
+    ].join("\n");
+  } catch (err) {
+    console.error(
+      "[agent] auto-recall failed (continuing without recalled context):",
+      err instanceof Error ? err.message : err,
+    );
+    return "";
+  }
+}
+
 export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
-  const { prompt, externalId, systemContext, onTextDelta, onMessage } = params;
+  const {
+    prompt,
+    externalId,
+    systemContext,
+    autoRecall = true,
+    autoRecallTopK = 5,
+    onTextDelta,
+    onMessage,
+  } = params;
 
   const existingSession = getSession(externalId);
   let sessionId: string | undefined = existingSession?.agentSessionId;
   let result = "";
+
+  // Auto-recall: surface relevant memories from mem0 and append to systemContext.
+  // Fail-graceful — if mem0/Qdrant is down, agent still runs without recalled context.
+  let finalSystemContext = systemContext;
+  if (autoRecall && prompt && prompt.trim().length > 0) {
+    const recallSection = await autoRecallSection(prompt, autoRecallTopK);
+    if (recallSection) {
+      finalSystemContext = finalSystemContext
+        ? `${finalSystemContext}\n\n${recallSection}`
+        : recallSection;
+    }
+  }
 
   // Temp file for collecting message_user calls (only needed when no onMessage callback)
   const messageFile = onMessage
@@ -51,6 +114,17 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
         TODOIST_API_TOKEN: env.todoistApiToken,
       },
     },
+    memory: {
+      command: "node",
+      args: [process.env.MCP_MEMORY_PATH || "/app/dist/mcp/memory.js"],
+      env: {
+        OPENAI_API_KEY: env.openaiApiKey,
+        QDRANT_URL: env.qdrantUrl,
+        MEM0_LLM_MODEL: env.mem0LlmModel,
+        MEM0_EMBEDDING_MODEL: env.mem0EmbeddingModel,
+        MEM0_HISTORY_DB_PATH: env.mem0HistoryDbPath,
+      },
+    },
   };
 
   // Build allowed tools list
@@ -61,6 +135,11 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     "mcp__todoist__todoist_list_tasks",
     "mcp__todoist__todoist_complete_task",
     "mcp__todoist__todoist_list_projects",
+    "mcp__memory__remember",
+    "mcp__memory__recall",
+    "mcp__memory__list_memories",
+    "mcp__memory__forget",
+    "mcp__memory__update_memory",
   ];
 
   // Conditionally add App Store Connect MCP server
@@ -123,8 +202,8 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       includePartialMessages: !!onTextDelta,
       // System prompt is ephemeral (not stored in conversation history),
       // so it must be passed on every call including resumes.
-      ...(systemContext
-        ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: systemContext } }
+      ...(finalSystemContext
+        ? { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: finalSystemContext } }
         : {}),
       ...(sessionId ? { resume: sessionId } : {}),
     },

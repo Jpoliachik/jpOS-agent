@@ -1,0 +1,49 @@
+# Fly.io configuration for jpOS Qdrant — vector store for mem0.
+#
+# Internal-only: not exposed to the public internet. Reachable from
+# jpos-agent over Fly's private network at:
+#   http://jpos-qdrant.internal:6333
+#
+# Deploy steps (first time):
+#   cd jpos-qdrant
+#   fly apps create jpos-qdrant
+#   fly volumes create qdrant_data --region ord --size 3 --yes
+#   fly deploy
+#
+# Subsequent deploys:
+#   cd jpos-qdrant && fly deploy
+app = "jpos-qdrant"
+primary_region = "ord"
+
+[build]
+  image = "qdrant/qdrant:latest"
+
+[env]
+  # Bind Qdrant on all interfaces so .internal DNS reaches it.
+  QDRANT__SERVICE__HTTP_PORT = "6333"
+  QDRANT__SERVICE__GRPC_PORT = "6334"
+  # Keep telemetry off for a personal-data store.
+  QDRANT__TELEMETRY_DISABLED = "true"
+
+[mounts]
+  source = "qdrant_data"
+  destination = "/qdrant/storage"
+
+# Internal TCP service on 6333 (HTTP). No [http_service] = no public exposure.
+# Other Fly apps in the same org reach it via jpos-qdrant.internal:6333.
+[[services]]
+  internal_port = 6333
+  protocol = "tcp"
+  auto_start_machines = true
+  auto_stop_machines = false
+  min_machines_running = 1
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "10s"
+
+[[vm]]
+  memory = "1024mb"
+  cpu_kind = "shared"
+  cpus = 1

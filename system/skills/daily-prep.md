@@ -17,12 +17,15 @@ Call `message_user` exactly once with the brief. Sending it is the whole job —
 
 ## Weekday Mode (Monday–Friday)
 
+> **Note on memory:** This skill runs from a cron, which means **auto-recall is OFF** — you don't get a `# Recalled Memories` section for free. You must call `recall` explicitly to load anything mem0 knows.
+
 ### Steps
-1. Pull today's Todoist tasks (`todoist_list_tasks`, filter "today") and recent memory/daily logs
-2. Identify the single most important first move — the thing he should open his laptop and do right now
-3. Check overdue only if something has a hard deadline TODAY that changes the day if missed. Otherwise, ignore entirely.
-4. Only include a body/energy note if there's a concrete recent pattern worth surfacing (e.g., "you've felt better on days you moved first"). One line, no prescription. Skip if nothing stands out.
-5. If something positive stands out from recent logs — a win, progress, a good moment — briefly call it out. Just a quick nod, not a gratitude section. Skip if nothing jumps out.
+1. **Load context from mem0.** Call `recall(query="current projects in progress", top_k=10)` and `recall(query="this week commitments and priorities", top_k=10)` to surface what's active. Also skim the last 1-2 days of `jpOS/daily-log/` for the very recent narrative.
+2. Pull today's Todoist tasks (`todoist_list_tasks`, filter "today").
+3. Identify the single most important first move — the thing he should open his laptop and do right now.
+4. Check overdue only if something has a hard deadline TODAY that changes the day if missed. Otherwise, ignore entirely.
+5. Only include a body/energy note if there's a concrete recent pattern worth surfacing. If you want body context specifically, call `recall(query="recent energy and physical state patterns", category="health", top_k=5)`. One line, no prescription. Skip if nothing stands out.
+6. If something positive stands out from recent logs — a win, progress, a good moment — briefly call it out. Just a quick nod, not a gratitude section. Skip if nothing jumps out.
 
 ### Task filtering
 Todoist includes household chores, errands, and life admin. These are almost never the priority in the morning brief. Skip them unless they are genuinely time-sensitive today (e.g., a scheduled appointment, a specific deadline). Focus on work tasks, commitments with other people, or things with real consequences if missed today. "Water plants," "clean kitchen," etc. are not briefing material.

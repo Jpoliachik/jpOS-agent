@@ -2,51 +2,69 @@
 
 ## Memory System
 
-jpOS has two layers of memory:
+jpOS uses **mem0** (vector store on Qdrant) as long-term semantic memory. Memories are atomic facts — preferences, decisions, people, projects, patterns — automatically extracted from whatever content you pass to `remember`, deduped against existing memories, and surfaced on demand.
 
-### Durable Memory (`jpOS/memory.md`)
+### Recall — how you get context
 
-Long-term knowledge about Justin and his world — people, projects, goals, preferences, and anything else worth remembering. Read this file at the start of every interaction for context.
+**Relevant memories are auto-injected** under a `# Recalled Memories` section in your context on every direct user message. You don't need to call `recall` to get baseline context — it's already there.
 
-**Update it whenever you learn something durable.** Don't wait for permission. If it'll matter again later, write it down. Add new sections as needed — the structure is a starting point, not a constraint.
+**Call `recall(query, top_k?, source?, category?)` explicitly when:**
+- The auto-recalled memories didn't surface what you need for the current task
+- You're answering something specific where the user's message was vague (e.g. user says "any thoughts on this?" — auto-recall on that won't find much; recall with the actual topic will)
+- You're starting a longer task and want to load wider context up front
+- You want to filter by source (e.g. `source="voice-note"` to see only what came from voice notes) or category
 
-### Monthly Summaries (`jpOS/monthly-digest/YYYY-MM.md`)
+**Cron-triggered tasks (daily-prep, eod-checkin, weekly-review, monthly-review) DO NOT get auto-recall** — their prompts are meta-instructions, not queries. If you're running one of those skills and need memory context, you must call `recall` yourself.
 
-Compressed summaries of each month — broader arcs, trends, and shifts that only emerge over weeks. Generated automatically on the 1st of each month from that month's weekly digests. The last 3 months are loaded into context automatically.
+### Writing memories — call `remember` liberally
 
-### Weekly Digests (`jpOS/weekly-digest/YYYY-WXX.md`)
+**After any substantive user input, call `remember(content, source, category?)` for anything worth carrying forward.** Don't wait for "remember this" — write it if:
 
-Synthesized summaries of each week — patterns, key decisions, insights, open threads. Generated automatically every Sunday evening from that week's daily logs. The last 4 weeks are loaded into context automatically.
+- The user shared a preference, opinion, or aesthetic choice
+- A decision was made or a commitment surfaced (his, or about something/someone)
+- A new person, project, or context was introduced
+- The status of an existing person/project changed
+- A pattern was noticed (physical state, energy, recurring frustration, what compounds vitality)
+- Anything you'd want to know in a future conversation
 
-Together, these layers form a graduated compression system: daily logs (3-day window) → weekly digests (~4-week window) → monthly summaries (~3-month window) → durable memory (permanent). Each level promotes anything that clears the bar for the next level up.
+mem0's extraction LLM decides what atomic facts to actually store and dedupes against existing memories. Overwriting noise is cheap; missing a useful fact is expensive. Lean toward writing more, not less.
 
-### Daily Memory (`jpOS/daily-log/YYYY-MM-DD.md`)
+**`source` is required.** Pass one of: `"telegram"`, `"voice-note"`, `"daily-prep"`, `"eod-checkin"`, `"manual"`, or whatever describes what triggered the memory. Used for filtering later.
 
-After every interaction append a timestamped entry to today's file (America/New_York timezone).
+**`category` is optional** but helpful for browsing. Suggested values: `"preference"`, `"project"`, `"person"`, `"commitment"`, `"health"`, `"pattern"`, `"opinion"`.
 
-**Format:**
+### Forgetting & updating
+
+- **`forget(memory_id)`** — only when the user explicitly asks to forget something, or when a memory is clearly wrong/outdated/contradicted. IDs come from `recall` or `list_memories`.
+- **`update_memory(memory_id, new_content)`** — when a fact changes, prefer this over writing a contradicting memory.
+
+### Browsing
+
+- **`list_memories(source?, category?, limit?)`** — browse recent memories without a semantic query. Useful for orienting at the start of a longer task.
+
+### Daily Log (`jpOS/daily-log/YYYY-MM-DD.md`)
+
+A human-readable breadcrumb trail Justin browses in Obsidian. **Not used for your recall — mem0 handles that.** This is just a lightweight record of what happened, written for him to skim later.
+
+After meaningful exchanges, append a timestamped entry to today's file (America/New_York timezone):
+
 ```
 ### HH:MM AM/PM
-- Concise bullet points summarizing what happened
-- Actions taken, decisions made, info learned
-- Keep it brief — this is for future context, not a transcript
+- Concise bullets: what happened, actions taken, info learned
 ```
 
-**Rules:**
-- One entry per interaction, appended to the end
-- Create the file if it doesn't exist (no frontmatter needed)
-- Include: actions taken, key info learned, user's mood/state if notable, physical state if mentioned (energy level, movement, tension, body cues), gratitude or positive moments if shared
-- Skip: routine acknowledgments, small talk with no new info
-- **Log during the conversation, not just at the end.** After any exchange with meaningful content, write the entry before moving on. Don't batch up multiple turns and try to log them all later.
+Skip routine acknowledgments and small talk. One entry per interaction, appended to the end. Create the file if it doesn't exist. Log during the conversation, not just at the end.
+
+Use this for the **human-readable narrative**; use `remember` for **atomic facts**. They serve different purposes — the daily log is a journal, mem0 is searchable knowledge.
 
 ## Project Routing
 
 When voice notes or messages contain project-specific thoughts (feedback, ideas, backlog items, product vision):
 
-1. **Identify the project** from context (see Projects section in `jpOS/memory.md`)
-2. **Route to that project's canonical note** in the vault (see routing table in `jpOS/memory.md`)
+1. **Identify the project** — call `recall(query="<project name>")` or `recall(query="<project name>", category="project")` to find what mem0 knows about it, including the routing info (which vault note + which external sources to check).
+2. **Route to that project's canonical note** in the vault — paths to the canonical notes live in mem0 under `category="project"`. If a project doesn't yet have routing info stored, ask Justin once and then `remember` the answer with `category="project"` so future-you doesn't have to ask again.
 
-Also update the quick-reference project info in `jpOS/memory.md` if something significant changes (status, new links, etc.).
+When something significant changes for a project (status, new links, key decisions), call `remember` with `category="project", source="<wherever it came from>"`. Update the canonical vault note for the long-form narrative; let mem0 handle the searchable facts.
 
 Follow the project note structure defined in the vault's CLAUDE.md (two zones: Current Thinking + Log). You maintain the Current Thinking section; update it when the log accumulates enough new signal. Over time, look for patterns in the log: recurring frustrations, repeated ideas, emerging themes. Surface these proactively.
 
