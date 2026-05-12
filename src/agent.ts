@@ -18,9 +18,9 @@ interface RunAgentParams {
   externalId: string;
   systemContext?: string;
   /**
-   * Whether to auto-recall relevant memories from mem0 based on `prompt`
-   * and inject them into the system prompt. Defaults to true.
-   * Set false for cron jobs where the prompt is an instruction, not a query.
+   * Whether to auto-recall relevant memories based on `prompt` and inject
+   * them into the system prompt. Defaults to true. Set false for cron jobs
+   * where the prompt is an instruction, not a query.
    */
   autoRecall?: boolean;
   /** Max memories to surface in auto-recall. Defaults to 5. */
@@ -32,9 +32,10 @@ interface RunAgentParams {
 }
 
 /**
- * Search mem0 for memories relevant to `prompt` and format them as a
- * system-prompt section. Returns empty string if mem0 is unreachable or returns
- * no hits — the agent should still respond, just without recalled context.
+ * Search the memory store for memories relevant to `prompt` and format them
+ * as a system-prompt section. Returns empty string if the store is unreachable
+ * or returns no hits — the agent should still respond, just without recalled
+ * context.
  */
 async function autoRecallSection(prompt: string, topK: number): Promise<string> {
   try {
@@ -80,8 +81,8 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
   let sessionId: string | undefined = existingSession?.agentSessionId;
   let result = "";
 
-  // Auto-recall: surface relevant memories from mem0 and append to systemContext.
-  // Fail-graceful — if mem0/Qdrant is down, agent still runs without recalled context.
+  // Auto-recall: surface relevant memories and append to systemContext.
+  // Fail-graceful — if Qdrant is down, agent still runs without recalled context.
   let finalSystemContext = systemContext;
   if (autoRecall && prompt && prompt.trim().length > 0) {
     const recallSection = await autoRecallSection(prompt, autoRecallTopK);
@@ -120,9 +121,8 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       env: {
         OPENAI_API_KEY: env.openaiApiKey,
         QDRANT_URL: env.qdrantUrl,
-        MEM0_LLM_MODEL: env.mem0LlmModel,
-        MEM0_EMBEDDING_MODEL: env.mem0EmbeddingModel,
-        MEM0_HISTORY_DB_PATH: env.mem0HistoryDbPath,
+        MEMORY_EMBEDDING_MODEL: env.memoryEmbeddingModel,
+        MEMORY_DEDUP_MODEL: env.memoryDedupModel,
       },
     },
   };

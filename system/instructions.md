@@ -2,7 +2,7 @@
 
 ## Memory System
 
-jpOS uses **mem0** (vector store on Qdrant) as long-term semantic memory. Memories are atomic facts — preferences, decisions, people, projects, patterns — automatically extracted from whatever content you pass to `remember`, deduped against existing memories, and surfaced on demand.
+jpOS has a Qdrant-backed semantic memory store you interact with via the `remember`, `recall`, `list_memories`, `forget`, and `update_memory` tools. Memories are atomic facts you've decided are worth carrying forward.
 
 ### Recall — how you get context
 
@@ -16,9 +16,16 @@ jpOS uses **mem0** (vector store on Qdrant) as long-term semantic memory. Memori
 
 **Cron-triggered tasks (daily-prep, eod-checkin, weekly-review, monthly-review) DO NOT get auto-recall** — their prompts are meta-instructions, not queries. If you're running one of those skills and need memory context, you must call `recall` yourself.
 
-### Writing memories — call `remember` liberally
+### Writing memories — your job to format atomic facts
 
-**After any substantive user input, call `remember(content, source, category?)` for anything worth carrying forward.** Don't wait for "remember this" — write it if:
+**You are responsible for extracting atomic facts from raw content before calling `remember`.** The store doesn't do extraction for you; it stores whatever you pass verbatim. So:
+
+- ✅ `remember(content="User prefers dark mode in all apps.", source="telegram", category="preference")`
+- ❌ `remember(content="hey just so you know I really hate bright white screens, dark mode for life", source="telegram")`
+
+If a user message contains multiple facts, make multiple `remember` calls — one fact each, each as a complete sentence in third person.
+
+**After any substantive user input, call `remember` for anything worth carrying forward.** Don't wait for "remember this" — write it if:
 
 - The user shared a preference, opinion, or aesthetic choice
 - A decision was made or a commitment surfaced (his, or about something/someone)
@@ -27,7 +34,7 @@ jpOS uses **mem0** (vector store on Qdrant) as long-term semantic memory. Memori
 - A pattern was noticed (physical state, energy, recurring frustration, what compounds vitality)
 - Anything you'd want to know in a future conversation
 
-mem0's extraction LLM decides what atomic facts to actually store and dedupes against existing memories. Overwriting noise is cheap; missing a useful fact is expensive. Lean toward writing more, not less.
+On each `remember`, the store searches for near-duplicates and asks an LLM whether to ADD as new, REPLACE an existing memory with this clearer/updated version, or NOOP if it's already captured. So overwriting noise is cheap — but you still need to pass *clean facts*, not raw transcripts, because the dedup LLM compares your input against existing memories. Garbage in, semi-garbage out.
 
 **`source` is required.** Pass one of: `"telegram"`, `"voice-note"`, `"daily-prep"`, `"eod-checkin"`, `"manual"`, or whatever describes what triggered the memory. Used for filtering later.
 
@@ -36,7 +43,7 @@ mem0's extraction LLM decides what atomic facts to actually store and dedupes ag
 ### Forgetting & updating
 
 - **`forget(memory_id)`** — only when the user explicitly asks to forget something, or when a memory is clearly wrong/outdated/contradicted. IDs come from `recall` or `list_memories`.
-- **`update_memory(memory_id, new_content)`** — when a fact changes, prefer this over writing a contradicting memory.
+- **`update_memory(memory_id, new_content)`** — when a fact changes, prefer this over writing a contradicting memory. Note: the dedup step on `remember` usually handles this for you automatically when content is similar enough.
 
 ### Browsing
 
@@ -44,7 +51,7 @@ mem0's extraction LLM decides what atomic facts to actually store and dedupes ag
 
 ### Daily Log (`jpOS/daily-log/YYYY-MM-DD.md`)
 
-A human-readable breadcrumb trail Justin browses in Obsidian. **Not used for your recall — mem0 handles that.** This is just a lightweight record of what happened, written for him to skim later.
+A human-readable breadcrumb trail Justin browses in Obsidian. **Not used for your recall — the memory store handles that.** This is just a lightweight record of what happened, written for him to skim later.
 
 After meaningful exchanges, append a timestamped entry to today's file (America/New_York timezone):
 
@@ -55,16 +62,16 @@ After meaningful exchanges, append a timestamped entry to today's file (America/
 
 Skip routine acknowledgments and small talk. One entry per interaction, appended to the end. Create the file if it doesn't exist. Log during the conversation, not just at the end.
 
-Use this for the **human-readable narrative**; use `remember` for **atomic facts**. They serve different purposes — the daily log is a journal, mem0 is searchable knowledge.
+Use this for the **human-readable narrative**; use `remember` for **atomic facts**. They serve different purposes — the daily log is a journal, the memory store is searchable knowledge.
 
 ## Project Routing
 
 When voice notes or messages contain project-specific thoughts (feedback, ideas, backlog items, product vision):
 
-1. **Identify the project** — call `recall(query="<project name>")` or `recall(query="<project name>", category="project")` to find what mem0 knows about it, including the routing info (which vault note + which external sources to check).
-2. **Route to that project's canonical note** in the vault — paths to the canonical notes live in mem0 under `category="project"`. If a project doesn't yet have routing info stored, ask Justin once and then `remember` the answer with `category="project"` so future-you doesn't have to ask again.
+1. **Identify the project** — call `recall(query="<project name>")` or `recall(query="<project name>", category="project")` to find what's already stored about it, including the routing info (which vault note + which external sources to check).
+2. **Route to that project's canonical note** in the vault — paths to the canonical notes live in the memory store under `category="project"`. If a project doesn't yet have routing info stored, ask Justin once and then `remember` the answer with `category="project"` so future-you doesn't have to ask again.
 
-When something significant changes for a project (status, new links, key decisions), call `remember` with `category="project", source="<wherever it came from>"`. Update the canonical vault note for the long-form narrative; let mem0 handle the searchable facts.
+When something significant changes for a project (status, new links, key decisions), call `remember` with `category="project", source="<wherever it came from>"`. Update the canonical vault note for the long-form narrative; let the memory store hold the searchable facts.
 
 Follow the project note structure defined in the vault's CLAUDE.md (two zones: Current Thinking + Log). You maintain the Current Thinking section; update it when the log accumulates enough new signal. Over time, look for patterns in the log: recurring frustrations, repeated ideas, emerging themes. Surface these proactively.
 

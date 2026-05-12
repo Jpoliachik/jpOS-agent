@@ -178,12 +178,12 @@ export async function createApiServer() {
 
     // Manual write (mostly for debugging / seeding)
     app.post<{
-      Body: { content: string; source?: string; category?: string; infer?: boolean };
+      Body: { content: string; source?: string; category?: string; skipDedup?: boolean };
     }>("/memory", async (request, reply) => {
-      const { content, source, category, infer } = request.body;
+      const { content, source, category, skipDedup } = request.body;
       if (!content) return reply.status(400).send({ error: "content required" });
       try {
-        const memories = await remember({ content, source, category, infer });
+        const memories = await remember({ content, source, category, skipDedup });
         return { added: memories.length, memories };
       } catch (error) {
         return reply.status(500).send({

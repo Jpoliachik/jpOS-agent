@@ -17,10 +17,10 @@ Call `message_user` exactly once with the brief. Sending it is the whole job —
 
 ## Weekday Mode (Monday–Friday)
 
-> **Note on memory:** This skill runs from a cron, which means **auto-recall is OFF** — you don't get a `# Recalled Memories` section for free. You must call `recall` explicitly to load anything mem0 knows.
+> **Note on memory:** This skill runs from a cron, which means **auto-recall is OFF** — you don't get a `# Recalled Memories` section for free. You must call `recall` explicitly to load context.
 
 ### Steps
-1. **Load context from mem0.** Call `recall(query="current projects in progress", top_k=10)` and `recall(query="this week commitments and priorities", top_k=10)` to surface what's active. Also skim the last 1-2 days of `jpOS/daily-log/` for the very recent narrative.
+1. **Load context from the memory store.** Call `recall(query="current projects in progress", top_k=10)` and `recall(query="this week commitments and priorities", top_k=10)` to surface what's active. Also skim the last 1-2 days of `jpOS/daily-log/` for the very recent narrative.
 2. Pull today's Todoist tasks (`todoist_list_tasks`, filter "today").
 3. Identify the single most important first move — the thing he should open his laptop and do right now.
 4. Check overdue only if something has a hard deadline TODAY that changes the day if missed. Otherwise, ignore entirely.

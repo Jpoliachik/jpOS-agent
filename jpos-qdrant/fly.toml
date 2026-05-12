@@ -1,4 +1,4 @@
-# Fly.io configuration for jpOS Qdrant — vector store for mem0.
+# Fly.io configuration for jpOS Qdrant — vector store for the memory layer.
 #
 # Internal-only: not exposed to the public internet. Reachable from
 # jpos-agent over Fly's private network at:
