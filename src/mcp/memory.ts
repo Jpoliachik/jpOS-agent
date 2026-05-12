@@ -25,19 +25,27 @@ const tools = [
   {
     name: "remember",
     description:
-      "Store an atomic fact to long-term memory. Pass a single well-formed fact " +
-      "in third person (e.g. \"User prefers dark mode\"), not raw conversation text " +
-      "or multiple facts in one call. On write, the store searches for near-duplicates " +
-      "and asks an LLM whether to ADD (default), REPLACE an existing memory with this " +
-      "clearer/updated version, or NOOP if it's already captured.",
+      "Store ONE fact to long-term memory. Always third person, complete sentence.\n\n" +
+      "What counts as 'one fact':\n" +
+      "- ✅ Multiple coupled details about a SINGLE entity " +
+      "(\"Katie is the CEO of Mitzi and a co-founder\")\n" +
+      "- ❌ Two distinct entities (\"User's wife is Emily. They share a Todoist.\") " +
+      "→ make TWO remember() calls\n" +
+      "- ❌ Bio fact + behavior/workflow pattern (\"Has a dog named Stout. " +
+      "Often walks the dog while listening to podcasts.\") → make TWO remember() calls\n" +
+      "- ❌ Multiple distinct preferences/decisions in one call → split\n\n" +
+      "On write, the store searches for near-duplicates and an LLM decides " +
+      "ADD / REPLACE / NOOP (skipped if skip_dedup=true).",
     inputSchema: {
       type: "object",
       properties: {
         content: {
           type: "string",
           description:
-            "A single atomic fact, already formatted as a complete sentence in " +
-            "third person. Split multiple facts into multiple remember() calls.",
+            "A single atomic fact in third person, as a complete sentence. " +
+            "See the rules in this tool's description before calling — bundled " +
+            "details about one entity are fine; mashing multiple entities or " +
+            "bio+behavior together is not.",
         },
         source: {
           type: "string",

@@ -25,6 +25,8 @@ jpOS has a Qdrant-backed semantic memory store you interact with via the `rememb
 
 If a user message contains multiple facts, make multiple `remember` calls — one fact each, each as a complete sentence in third person.
 
+**Split when in doubt.** Bundled details about a single entity are fine ("Katie is CEO and a co-founder of Mitzi"). What's NOT fine: two distinct entities in one call ("Wife is Emily. We share a Todoist."), or a bio fact mashed with a behavior/workflow pattern ("Has a dog named Stout. Walks the dog while listening to podcasts."). Both cases → make two `remember()` calls.
+
 **After any substantive user input, call `remember` for anything worth carrying forward.** Don't wait for "remember this" — write it if:
 
 - The user shared a preference, opinion, or aesthetic choice
