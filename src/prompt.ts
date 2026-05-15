@@ -1,6 +1,11 @@
 /**
- * Instruction loader — reads system prompts and skills from the repo,
- * and memory/daily-log from the Obsidian vault.
+ * Instruction loader — assembles the system prompt from repo + vault.
+ *
+ * Memory model (hybrid):
+ *   - Durable, semantic memory: Qdrant (mem store). Auto-recalled per message
+ *     in `runAgent`, NOT loaded here.
+ *   - Medium-term temporal: last 4 weekly digests from the vault.
+ *   - Short-term temporal: last 3 daily logs from the vault.
  *
  * Repo layout (system/ at repo root):
  *   system/soul.md            — agent identity & hard rules
@@ -8,8 +13,8 @@
  *   system/skills/<name>.md   — per-skill prompts (voice-note, daily-prep, message, eod-checkin)
  *
  * Vault layout (runtime-mutable, under jpOS/ in the vault):
- *   jpOS/memory.md             — durable memory
- *   jpOS/daily-log/YYYY-MM-DD.md — daily log entries (recent days loaded automatically)
+ *   jpOS/daily-log/YYYY-MM-DD.md — daily log entries (last 3 days loaded)
+ *   jpOS/weekly-digest/YYYY-WXX.md — weekly digests (last 4 weeks loaded)
  *
  * Template variables in .md files are replaced at load time:
  *   {{date}}        — today's date (YYYY-MM-DD, America/New_York)
@@ -22,7 +27,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VAULT_PATH, JPOS_DIR } from "./obsidian.js";
-import { loadDurableMemory, loadRecentMemory, loadWeeklyDigests, loadMonthlyDigests } from "./memory.js";
+import { loadRecentMemory, loadWeeklyDigests } from "./memory.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -61,13 +66,6 @@ function weekFileString(): string {
   const dayOfYear = Math.floor((et.getTime() - jan1.getTime()) / 86_400_000) + 1;
   const weekNum = Math.ceil((dayOfYear + jan1.getDay()) / 7);
   return `${et.getFullYear()}-W${String(weekNum).padStart(2, "0")}.md`;
-}
-
-/**
- * Return the month filename for the current month: YYYY-MM.md
- */
-function monthFileString(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: TIMEZONE }).slice(0, 7) + ".md";
 }
 
 function readFileSafe(path: string): string | null {
@@ -125,7 +123,6 @@ export function buildSystemContext(
     time: timeString(),
     vault_path: VAULT_PATH,
     week_file: weekFileString(),
-    month_file: monthFileString(),
     ...Object.fromEntries(
       Object.entries(vars ?? {}).filter(([, v]) => v != null) as [string, string][],
     ),
@@ -141,8 +138,6 @@ export function buildSystemContext(
     );
   }
 
-  const durableMemory = loadDurableMemory();
-  const monthlyDigests = loadMonthlyDigests();
   const weeklyDigests = loadWeeklyDigests();
   const recentMemory = loadRecentMemory();
   const skill = skillName ? applyVars(loadSkill(skillName), templateVars) : "";
@@ -161,14 +156,10 @@ export function buildSystemContext(
     parts.push(instructions, "");
   }
 
-  if (durableMemory) {
-    parts.push("# Memory", "", durableMemory, "");
-  }
-
-  if (monthlyDigests) {
-    parts.push("# Monthly Summaries", "", monthlyDigests, "");
-  }
-
+  // Durable, semantic memory lives in Qdrant and is auto-recalled per-message
+  // in `runAgent`. The two file-based layers below are the temporal hybrid:
+  // weekly digests for medium-term ("what's been on my mind"), daily log
+  // entries for short-term ("what just happened").
   if (weeklyDigests) {
     parts.push("# Weekly Digests", "", weeklyDigests, "");
   }
@@ -177,16 +168,13 @@ export function buildSystemContext(
     parts.push("# Daily Log", "", recentMemory, "");
   }
 
-  // Tell the agent where memory files live so it can look up older ones on demand
+  // Tell the agent where temporal files live so it can look up older ones on demand.
   parts.push(
     `> **Daily log files** are stored at \`${join(VAULT_PATH, JPOS_DIR, "daily-log")}/YYYY-MM-DD.md\`. ` +
-    "Only the last 3 days are loaded above. To recall older days, use Glob/Read to browse and read files in that directory.",
+    "Only the last 3 days are loaded above. To recall older days, use Glob/Read.",
     "",
     `> **Weekly digests** are stored at \`${join(VAULT_PATH, JPOS_DIR, "weekly-digest")}/YYYY-WXX.md\`. ` +
-    "Only the last 4 weeks are loaded above. To recall older weeks, use Glob/Read to browse that directory.",
-    "",
-    `> **Monthly summaries** are stored at \`${join(VAULT_PATH, JPOS_DIR, "monthly-digest")}/YYYY-MM.md\`. ` +
-    "Only the last 3 months are loaded above. To recall older months, use Glob/Read to browse that directory.",
+    "Only the last 4 weeks are loaded above. To recall older weeks, use Glob/Read.",
     "",
   );
 

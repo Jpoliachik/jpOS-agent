@@ -1,31 +1,20 @@
 /**
- * Memory system — reads memory from the Obsidian vault.
+ * Temporal memory readers — file-based, vault-backed.
  *
- * Two sources:
- *   jpOS/memory.md              — durable memory (always loaded)
- *   jpOS/daily-log/YYYY-MM-DD.md — daily log entries (recent N days loaded)
+ * This module ONLY handles temporal context (daily logs + weekly digests).
+ * Durable semantic memory lives in `src/memory-store.ts` (Qdrant).
+ *
+ * Loaded into the system prompt by `src/prompt.ts`:
+ *   jpOS/daily-log/YYYY-MM-DD.md  — last 3 days
+ *   jpOS/weekly-digest/YYYY-WXX.md — last 4 weeks
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { VAULT_PATH, JPOS_DIR } from "./obsidian.js";
 
-const MEMORY_FILE = join(JPOS_DIR, "memory.md");
 const DAILY_LOG_DIR = join(JPOS_DIR, "daily-log");
 const WEEKLY_DIGEST_DIR = join(JPOS_DIR, "weekly-digest");
-const MONTHLY_DIGEST_DIR = join(JPOS_DIR, "monthly-digest");
-
-/**
- * Load the durable memory file (jpOS/memory.md).
- */
-export function loadDurableMemory(): string {
-  const path = join(VAULT_PATH, MEMORY_FILE);
-  try {
-    return readFileSync(path, "utf-8").trim();
-  } catch {
-    return "";
-  }
-}
 
 /**
  * Load the most recent weekly digest files, concatenated newest-first.
@@ -59,38 +48,7 @@ export function loadWeeklyDigests(weeks: number = 4): string {
 }
 
 /**
- * Load the most recent monthly digest files, concatenated newest-first.
- * Files are named YYYY-MM.md.
- */
-export function loadMonthlyDigests(months: number = 3): string {
-  const dir = join(VAULT_PATH, MONTHLY_DIGEST_DIR);
-  if (!existsSync(dir)) return "";
-
-  const files = readdirSync(dir)
-    .filter((f) => /^\d{4}-\d{2}\.md$/.test(f))
-    .sort()
-    .reverse()
-    .slice(0, months);
-
-  if (files.length === 0) return "";
-
-  const sections: string[] = [];
-  for (const file of files) {
-    try {
-      const content = readFileSync(join(dir, file), "utf-8").trim();
-      if (content) {
-        sections.push(content);
-      }
-    } catch {
-      // Skip unreadable files
-    }
-  }
-
-  return sections.join("\n\n---\n\n");
-}
-
-/**
- * Load the most recent daily memory files, concatenated newest-first.
+ * Load the most recent daily log files, concatenated newest-first.
  */
 export function loadRecentMemory(days: number = 3): string {
   const dir = join(VAULT_PATH, DAILY_LOG_DIR);

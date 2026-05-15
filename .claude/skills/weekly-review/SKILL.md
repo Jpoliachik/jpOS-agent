@@ -9,21 +9,19 @@ Synthesize the past week's daily logs into a weekly digest. This is a compressio
 
 ## Philosophy
 
-Daily logs are high-fidelity, short-lived. Durable memory (`memory.md`) is identity-level, permanent. Weekly digests fill the gap: medium-detail, medium-duration context that would otherwise be lost after 3 days.
+Daily logs are high-fidelity, short-lived. The long-term semantic memory store (Qdrant) holds durable atomic facts. Weekly digests fill the temporal gap between them: medium-detail, medium-duration narrative context that would otherwise be lost after the 3-day daily log window.
 
-This is not a productivity report. It's pattern recognition. What threads are emerging? What insights felt important but didn't obviously belong in durable memory? What's the shape of the week?
+This is not a productivity report. It's pattern recognition. What threads are emerging? What insights felt important? What's the shape of the week?
 
 ## Steps
 
 1. **Read the past 7 daily logs** from `{{vault_path}}/jpOS/daily-log/`. Files are named `YYYY-MM-DD.md`. Work with what's there if fewer than 7 exist.
 
-2. **Read current `memory.md`** to understand what's already captured durably — don't repeat it.
+2. **Synthesize the digest** using the format below. Write it to `{{vault_path}}/jpOS/weekly-digest/{{week_file}}`.
 
-3. **Synthesize the digest** using the format below. Write it to `{{vault_path}}/jpOS/weekly-digest/{{week_file}}`.
+3. **Do NOT promote facts to the long-term memory store from this skill.** That happens naturally via `remember` calls during normal conversation — duplicating it here creates two write paths and confuses dedup. If you notice durable facts you genuinely think haven't been captured, that's a signal to flag in the digest itself (under "Insights" or a `## Not Yet Captured` note) so Justin can decide.
 
-4. **Promote to durable memory** if anything from this week clearly belongs in `memory.md` — new projects, significant life changes, updated preferences, relationship developments. Edit `memory.md` directly. Note what you promoted in the digest.
-
-5. **Do NOT message Justin.** This is background processing. Silent by default.
+4. **Do NOT message Justin.** This is background processing. Silent by default.
 
 ## Digest Format
 
@@ -52,9 +50,6 @@ Write the digest as a markdown file with this structure:
 - Questions raised but not answered
 - Intentions stated but not yet acted on
 
-## Promoted to Memory
-- What (if anything) was added to memory.md this week, and why
-- "Nothing promoted" is fine — not every week has durable-level signal
 ```
 
 Omit any section that has nothing meaningful to say. A short digest is better than a padded one.

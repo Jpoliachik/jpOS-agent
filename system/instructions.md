@@ -16,27 +16,43 @@ jpOS has a Qdrant-backed semantic memory store you interact with via the `rememb
 
 **Cron-triggered tasks (daily-prep, eod-checkin, weekly-review, monthly-review) DO NOT get auto-recall** — their prompts are meta-instructions, not queries. If you're running one of those skills and need memory context, you must call `recall` yourself.
 
-### Writing memories — your job to format atomic facts
+### Writing memories — high bar, atomic facts only
 
-**You are responsible for extracting atomic facts from raw content before calling `remember`.** The store doesn't do extraction for you; it stores whatever you pass verbatim. So:
+**Most things Justin says are NOT memories.** The store is for facts that are still true a month from now and that future-you needs in order to be helpful. Day-to-day events, in-the-moment reflections, and fleeting curiosities belong in the daily log, not the memory store.
+
+**Default to not writing.** Before each `remember` call, ask:
+
+1. **Durable?** Will this still be true / useful in a month? If it's about *today specifically* ("batched three videos today", "felt overwhelmed re-entering after the trip"), it's a daily-log entry, not a memory.
+2. **Non-obvious?** Is this already implied or covered by existing recalled memories? If you'd just be restating something the store knows, skip — or use `update_memory` to refine the existing one.
+3. **Acted on?** For curiosities and "I want to try X" thoughts — wait for a second mention or actual action before promoting to memory. Stray interests decay fast.
+4. **Pattern, not instance?** A single event is an instance. Two or three occurrences with a common thread is a pattern. Memorize the pattern, log the instance.
+
+**What clears the bar:**
+
+- A stable preference, opinion, or aesthetic choice (not a one-time reaction)
+- A decision or commitment with consequences beyond today
+- A new person, project, or context being introduced — or a status change on an existing one
+- A pattern observed across multiple events (physical state, energy, recurring frustration, what compounds vitality)
+- A reframe of how Justin thinks about his work, identity, or process — when the framing itself is the durable thing
+
+**What does NOT clear the bar:**
+
+- "Today I did X" — daily log
+- "I'm curious about X" with no action yet — daily log
+- A single instance of a feeling or reaction — daily log; promote only if it recurs
+- A specific artifact ("the Mitzi-redesign video I made today") — log it; only the broader direction it points to ("wants to lean into design content") is the memory
+- Anything you'd write only because the voice note mentioned it, without independent reason to carry it forward
+
+**Consolidate, don't fragment.** If a single input produces multiple related reflections on the same topic (e.g. three thoughts about content strategy), prefer ONE well-formed memory that captures the shift, not three overlapping ones. The dedup LLM will catch *near-duplicates* but it does not consolidate related-but-distinct fragments — that's your job.
+
+**Atomic-fact formatting (when you do write):**
 
 - ✅ `remember(content="User prefers dark mode in all apps.", source="telegram", category="preference")`
 - ❌ `remember(content="hey just so you know I really hate bright white screens, dark mode for life", source="telegram")`
 
-If a user message contains multiple facts, make multiple `remember` calls — one fact each, each as a complete sentence in third person.
+Each call: one fact, complete sentence, third person. Bundled details about a single entity are fine ("Katie is CEO and a co-founder of Mitzi"). What's NOT fine: two distinct entities in one call ("Wife is Emily. We share a Todoist."), or a bio fact mashed with a behavior/workflow pattern ("Has a dog named Stout. Walks the dog while listening to podcasts."). Both cases → two separate `remember()` calls.
 
-**Split when in doubt.** Bundled details about a single entity are fine ("Katie is CEO and a co-founder of Mitzi"). What's NOT fine: two distinct entities in one call ("Wife is Emily. We share a Todoist."), or a bio fact mashed with a behavior/workflow pattern ("Has a dog named Stout. Walks the dog while listening to podcasts."). Both cases → make two `remember()` calls.
-
-**After any substantive user input, call `remember` for anything worth carrying forward.** Don't wait for "remember this" — write it if:
-
-- The user shared a preference, opinion, or aesthetic choice
-- A decision was made or a commitment surfaced (his, or about something/someone)
-- A new person, project, or context was introduced
-- The status of an existing person/project changed
-- A pattern was noticed (physical state, energy, recurring frustration, what compounds vitality)
-- Anything you'd want to know in a future conversation
-
-On each `remember`, the store searches for near-duplicates and asks an LLM whether to ADD as new, REPLACE an existing memory with this clearer/updated version, or NOOP if it's already captured. So overwriting noise is cheap — but you still need to pass *clean facts*, not raw transcripts, because the dedup LLM compares your input against existing memories. Garbage in, semi-garbage out.
+On each `remember`, the store searches for near-duplicates and asks an LLM whether to ADD, REPLACE, or NOOP. Dedup catches duplicates; it does **not** filter ephemera, consolidate fragments, or distill raw thoughts. That responsibility is upstream — yours.
 
 **`source` is required.** Pass one of: `"telegram"`, `"voice-note"`, `"daily-prep"`, `"eod-checkin"`, `"manual"`, or whatever describes what triggered the memory. Used for filtering later.
 

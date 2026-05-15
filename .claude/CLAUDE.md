@@ -9,7 +9,7 @@ Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 - **This repo (`system/`):** Durable, human-authored prompts — identity (`soul.md`), instructions (`instructions.md`), trigger-specific skills (`skills/*.md`). Version-controlled, reviewed in PRs.
 - **This repo (`.claude/skills/`):** On-demand Claude Code skills — discoverable by the agent and invocable via the `Skill` tool during any conversation. Use this for reusable capabilities that aren't tied to a specific trigger.
 - **This repo (`src/`):** Runtime code, tool call implementations, integrations, interfaces (Telegram, API), infrastructure.
-- **Obsidian vault:** Runtime-mutable agent data — memory (`memory.md`), daily logs (`daily-log/`), voice notes (`voice-notes/`), context files (`context/`). Anything the agent writes or modifies at runtime.
+- **Obsidian vault:** Human-readable, runtime-mutable data — daily logs (`daily-log/`), weekly digests (`weekly-digest/`), voice notes (`voice-notes/`), context files (`context/`). The agent's *semantic* memory lives in Qdrant (see Memory layer below), not in the vault.
 
 ### Agent-first design: expose tools, don't make assumptions
 
@@ -32,9 +32,9 @@ CLI tools (invoked via Bash) are more token-efficient than MCP tool definitions 
 ## Architecture
 
 - `src/agent.ts` - Agent SDK wrapper with session management + auto-recall step
-- `src/prompt.ts` - Builds system prompt from repo system files + vault memory
-- `src/memory.ts` - **(legacy, being phased out)** File-based reader for vault digests/daily logs
-- `src/memory-store.ts` - **Qdrant + OpenAI memory store.** Primary memory layer.
+- `src/prompt.ts` - Builds system prompt: identity + instructions + temporal layers (weekly digests, daily logs)
+- `src/memory.ts` - Thin file readers for the temporal hybrid layer (weekly digests, daily logs)
+- `src/memory-store.ts` - **Qdrant + OpenAI durable semantic memory.** Primary memory layer.
 - `src/interfaces/telegram.ts` - Telegram bot (grammy)
 - `src/interfaces/api.ts` - HTTP API (Fastify) + memory inspection endpoints
 - `src/mcp/memory.ts` - Memory MCP server (`remember`, `recall`, `list_memories`, `forget`, `update_memory`)
