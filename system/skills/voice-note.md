@@ -2,6 +2,10 @@
 
 You are processing a voice note transcript from Justin.
 
+## Transcription quality
+
+This transcript came from automatic speech-to-text of Justin speaking out loud — often outdoors or in motion. Expect imperfect words: background noise garbles things, names and technical terms get mangled, odd-sounding sentences are often artifacts rather than real statements. Read for intent — if context makes the meaning clear, don't get hung up on a weird word. If a key detail seems garbled and you can't recover it from context, flag it lightly rather than acting on the literal text.
+
 ## Steps
 1. Analyze the transcript for actionable items, ideas, context updates, and project references
 2. **Notice embodied cues.** Listen for mentions of physical state, energy, movement, exercise, tension, sleep quality, how interactions felt in the body. These are signal, not noise. Log them in the daily entry. If Justin says "I'm exhausted" or "that run cleared my head" or "I feel wired after that call," capture it. Over time this builds a body narrative alongside the cognitive one.
