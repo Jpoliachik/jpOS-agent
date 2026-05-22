@@ -18,15 +18,37 @@ import { buildPageUrl } from "../pages/sign.js";
 import { validatePage, PageValidationError } from "../pages/cards.js";
 
 const CARD_DOC = `
-A "card" is one of these shapes:
-- { "type": "heading", "text": string, "level"?: 1|2|3 }
-- { "type": "text", "body": string }
-- { "type": "markdown", "body": string }   // full markdown, escape hatch
-- { "type": "bullets", "items": string[], "ordered"?: boolean }
-- { "type": "metric", "label": string, "value": string|number, "delta"?: string, "hint"?: string }
-- { "type": "quote", "text": string, "source"?: string }
-- { "type": "link-list", "links": { "label": string, "href": string, "hint"?: string }[] }
-- { "type": "divider" }
+Every card (except "divider") shares an optional shell:
+  width?: "full" | "half"   // default "full". Halves pair into a 2-col grid.
+  eyebrow?: string          // SHORT uppercase label (e.g. "TODAY", "WEATHER")
+  icon?: Icon               // one of: star, sun, cloud, moon, diamond, clock,
+                            //   calendar, arrow-right, check, quote,
+                            //   bookmark, bolt, note, heart, flame
+  meta?: string             // right-aligned tag (e.g. "4 ITEMS", "FROM YESTERDAY")
+
+Card types (closed set — there is NO markdown escape hatch):
+
+- { type: "prose", title: string, body?: string }
+    General-purpose card. Short serif title (keep <60 chars).
+    Optional 1–3 line description. Use for headings + intros + standalone notes.
+
+- { type: "list", items: ListItem[], style?: "agenda"|"bullets"|"numbered" }
+    ListItem = { text: string, lead?: string, trail?: string, href?: string }
+    "agenda" style uses item.lead as a left-gutter time/marker.
+    Use for agendas, reminders, links, todos — anything plural.
+
+- { type: "weather", temp: string|number, unit?: "F"|"C",
+    condition?: string, high?: string|number, low?: string|number }
+
+- { type: "quote", text: string, source?: string }
+
+- { type: "metric", label: string, value: string|number, delta?: string, hint?: string }
+    Half-width by default fits nicely.
+
+- { type: "divider" }   // No shell. Just a horizontal rule.
+
+All text fields are PLAIN TEXT — no markdown, no HTML, no inline formatting.
+Compress info into existing card types rather than asking for new escape hatches.
 `.trim();
 
 const tools = [
@@ -51,7 +73,12 @@ const tools = [
         title: { type: "string", description: "Page title (shown as <h1>)." },
         subtitle: {
           type: "string",
-          description: "Optional subtitle / date range / context line under the title.",
+          description: "Optional italic subtitle under the title.",
+        },
+        meta: {
+          type: "string",
+          description:
+            "Optional right-aligned uppercase meta in the page header (e.g. \"FRI · 22 MAY 2026\").",
         },
         cards: {
           type: "array",
@@ -101,6 +128,7 @@ interface ToolArgs {
   slug?: string;
   title?: string;
   subtitle?: string;
+  meta?: string;
   cards?: unknown;
   ttl_days?: number;
   limit?: number;
@@ -127,6 +155,7 @@ async function handleToolCall(name: string, args: ToolArgs): Promise<unknown> {
         slug: args.slug,
         title: args.title,
         subtitle: args.subtitle,
+        meta: args.meta,
         cards: args.cards,
       });
       savePage(page);

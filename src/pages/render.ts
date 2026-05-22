@@ -1,14 +1,32 @@
 /**
  * Render a validated Page to an HTML string. Pure function, no I/O.
  *
- * Markdown handling: lightweight in-house converter sufficient for the
- * `markdown` card body — headings, bold/italic/code, links, lists, blockquotes,
- * paragraphs. Avoids pulling in a markdown lib for now; swap to `marked`
- * if we outgrow it.
+ * Every card is rendered with the same shell: an eyebrow row (icon + label
+ * on the left, optional meta on the right) above the type-specific body.
+ * Cards lay out on a 2-column grid; width="half" sits in one column,
+ * width="full" (default) spans both.
  */
 
-import type { Card, Page } from "./cards.js";
+import type { Card, Icon, ListItem, Page } from "./cards.js";
 import { PAGE_CSS } from "./styles.js";
+
+const ICON_GLYPHS: Record<Icon, string> = {
+  star: "✱",
+  sun: "☀",
+  cloud: "☁",
+  moon: "☾",
+  diamond: "✦",
+  clock: "◷",
+  calendar: "▦",
+  "arrow-right": "→",
+  check: "✓",
+  quote: "❝",
+  bookmark: "❦",
+  bolt: "⚡",
+  note: "♪",
+  heart: "♥",
+  flame: "✺",
+};
 
 export function renderPage(page: Page): string {
   const body = page.cards.map(renderCard).join("\n");
@@ -26,10 +44,15 @@ export function renderPage(page: Page): string {
     "<body>",
     "<main>",
     '<header class="page-header">',
+    '<div class="page-header-left">',
     `<h1>${escapeHtml(page.title)}</h1>`,
     page.subtitle ? `<div class="subtitle">${escapeHtml(page.subtitle)}</div>` : "",
+    "</div>",
+    page.meta ? `<div class="page-meta">${escapeHtml(page.meta)}</div>` : "",
     "</header>",
+    '<div class="grid">',
     body,
+    "</div>",
     '<footer class="page-footer">jpOS</footer>',
     "</main>",
     "</body>",
@@ -38,52 +61,115 @@ export function renderPage(page: Page): string {
 }
 
 function renderCard(card: Card): string {
-  switch (card.type) {
-    case "heading": {
-      const level = card.level ?? 2;
-      const tag = `h${level}`;
-      return `<section class="card flush"><${tag}>${escapeHtml(card.text)}</${tag}></section>`;
-    }
-    case "text":
-      return `<section class="card"><p>${escapeHtml(card.body)}</p></section>`;
-    case "markdown":
-      return `<section class="card">${renderMarkdown(card.body)}</section>`;
-    case "bullets": {
-      const tag = card.ordered ? "ol" : "ul";
-      const items = card.items.map((i) => `<li>${escapeHtml(i)}</li>`).join("");
-      return `<section class="card"><${tag}>${items}</${tag}></section>`;
-    }
-    case "metric": {
-      const delta = card.delta
-        ? `<span class="delta">${escapeHtml(card.delta)}</span>`
-        : "";
-      const hint = card.hint ? `<div class="hint">${escapeHtml(card.hint)}</div>` : "";
-      return [
-        '<section class="card metric">',
-        `<div class="label">${escapeHtml(card.label)}</div>`,
-        `<div class="value">${escapeHtml(String(card.value))}${delta}</div>`,
-        hint,
-        "</section>",
-      ].join("");
-    }
-    case "quote": {
-      const source = card.source
-        ? `<span class="source">${escapeHtml(card.source)}</span>`
-        : "";
-      return `<section class="card"><div class="quote">${escapeHtml(card.text)}${source}</div></section>`;
-    }
-    case "link-list": {
-      const links = card.links
-        .map((l) => {
-          const hint = l.hint ? `<span class="hint">${escapeHtml(l.hint)}</span>` : "";
-          return `<a href="${escapeAttr(l.href)}">${escapeHtml(l.label)}${hint}</a>`;
-        })
-        .join("");
-      return `<section class="card link-list">${links}</section>`;
-    }
-    case "divider":
-      return '<hr class="divider">';
+  if (card.type === "divider") {
+    return '<hr class="divider">';
   }
+
+  const widthClass = card.width === "half" ? "half" : "full";
+  const eyebrow = renderEyebrow(card.eyebrow, card.icon, card.meta);
+
+  const body = (() => {
+    switch (card.type) {
+      case "prose":
+        return [
+          `<h2 class="prose-title">${escapeHtml(card.title)}</h2>`,
+          card.body ? `<p class="prose-body">${escapeHtml(card.body)}</p>` : "",
+        ].join("");
+      case "list":
+        return renderList(card.items, card.style);
+      case "weather":
+        return renderWeather(card);
+      case "quote":
+        return [
+          `<blockquote class="quote">${escapeHtml(card.text)}</blockquote>`,
+          card.source
+            ? `<div class="quote-source">${escapeHtml(card.source)}</div>`
+            : "",
+        ].join("");
+      case "metric": {
+        const delta = card.delta
+          ? `<span class="metric-delta">${escapeHtml(card.delta)}</span>`
+          : "";
+        const hint = card.hint
+          ? `<div class="metric-hint">${escapeHtml(card.hint)}</div>`
+          : "";
+        return [
+          `<div class="metric-value">${escapeHtml(String(card.value))}${delta}</div>`,
+          `<div class="metric-label">${escapeHtml(card.label)}</div>`,
+          hint,
+        ].join("");
+      }
+    }
+  })();
+
+  return `<section class="card ${widthClass}">${eyebrow}${body}</section>`;
+}
+
+function renderEyebrow(
+  label: string | undefined,
+  icon: Icon | undefined,
+  meta: string | undefined,
+): string {
+  if (!label && !icon && !meta) return "";
+  const left = label || icon
+    ? [
+        '<div class="eyebrow-left">',
+        icon ? `<span class="eyebrow-icon">${ICON_GLYPHS[icon]}</span>` : "",
+        label ? `<span class="eyebrow-label">${escapeHtml(label)}</span>` : "",
+        "</div>",
+      ].join("")
+    : "";
+  const right = meta ? `<div class="eyebrow-meta">${escapeHtml(meta)}</div>` : "";
+  return `<div class="eyebrow">${left}${right}</div>`;
+}
+
+function renderList(items: ListItem[], style: "agenda" | "bullets" | "numbered" | undefined): string {
+  const resolved = style ?? "bullets";
+  const rows = items.map((item, i) => {
+    const lead = (() => {
+      if (item.lead) return escapeHtml(item.lead);
+      if (resolved === "bullets") return "•";
+      if (resolved === "numbered") return `${i + 1}.`;
+      return "";
+    })();
+    const text = item.href
+      ? `<a href="${escapeAttr(item.href)}">${escapeHtml(item.text)}</a>`
+      : escapeHtml(item.text);
+    const trail = item.trail
+      ? `<span class="list-trail">${escapeHtml(item.trail)}</span>`
+      : "";
+    return [
+      '<div class="list-row">',
+      `<div class="list-lead">${lead}</div>`,
+      `<div class="list-text">${text}${trail}</div>`,
+      "</div>",
+    ].join("");
+  });
+  return `<div class="list list-${resolved}">${rows.join("")}</div>`;
+}
+
+function renderWeather(card: {
+  temp: number | string;
+  unit?: "F" | "C";
+  condition?: string;
+  high?: number | string;
+  low?: number | string;
+}): string {
+  const unit = card.unit ? `<span class="weather-unit">°${card.unit}</span>` : "";
+  const condition = card.condition
+    ? `<div class="weather-condition">${escapeHtml(card.condition)}.</div>`
+    : "";
+  const hi = card.high !== undefined ? `H ${escapeHtml(String(card.high))}` : "";
+  const lo = card.low !== undefined ? `L ${escapeHtml(String(card.low))}` : "";
+  const hilo =
+    hi || lo
+      ? `<div class="weather-hilo">${[hi, lo].filter(Boolean).join(" · ")}</div>`
+      : "";
+  return [
+    `<div class="weather-temp">${escapeHtml(String(card.temp))}${unit}</div>`,
+    condition,
+    hilo,
+  ].join("");
 }
 
 function escapeHtml(s: string): string {
@@ -97,100 +183,4 @@ function escapeHtml(s: string): string {
 
 function escapeAttr(s: string): string {
   return escapeHtml(s);
-}
-
-// --- Minimal markdown -----------------------------------------------------
-// Supports: # h1–### h3, **bold**, *italic*, `code`, [text](href), unordered
-// lists (-/*), ordered lists (1.), > blockquote, blank-line paragraphs.
-
-function renderMarkdown(src: string): string {
-  const lines = src.replace(/\r\n/g, "\n").split("\n");
-  const out: string[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    if (line.trim() === "") {
-      i++;
-      continue;
-    }
-
-    // Headings
-    const h = /^(#{1,3})\s+(.*)$/.exec(line);
-    if (h) {
-      const level = h[1].length;
-      out.push(`<h${level + 1}>${inlineMd(h[2])}</h${level + 1}>`);
-      i++;
-      continue;
-    }
-
-    // Blockquote
-    if (line.startsWith("> ")) {
-      const buf: string[] = [];
-      while (i < lines.length && lines[i].startsWith("> ")) {
-        buf.push(lines[i].slice(2));
-        i++;
-      }
-      out.push(`<blockquote>${inlineMd(buf.join(" "))}</blockquote>`);
-      continue;
-    }
-
-    // Unordered list
-    if (/^\s*[-*]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^\s*[-*]\s+/, ""));
-        i++;
-      }
-      out.push(`<ul>${items.map((x) => `<li>${inlineMd(x)}</li>`).join("")}</ul>`);
-      continue;
-    }
-
-    // Ordered list
-    if (/^\s*\d+\.\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^\s*\d+\.\s+/, ""));
-        i++;
-      }
-      out.push(`<ol>${items.map((x) => `<li>${inlineMd(x)}</li>`).join("")}</ol>`);
-      continue;
-    }
-
-    // Paragraph (consume until blank line or block element)
-    const para: string[] = [];
-    while (
-      i < lines.length &&
-      lines[i].trim() !== "" &&
-      !/^(#{1,3})\s+/.test(lines[i]) &&
-      !lines[i].startsWith("> ") &&
-      !/^\s*[-*]\s+/.test(lines[i]) &&
-      !/^\s*\d+\.\s+/.test(lines[i])
-    ) {
-      para.push(lines[i]);
-      i++;
-    }
-    out.push(`<p>${inlineMd(para.join(" "))}</p>`);
-  }
-
-  return out.join("\n");
-}
-
-function inlineMd(s: string): string {
-  // Escape first; then apply inline syntax to the *escaped* string. Because
-  // our inline tokens use only ASCII punctuation that survives escapeHtml,
-  // and we never inject raw user text after this point, this is safe.
-  let t = escapeHtml(s);
-  // Inline code (do early so its contents aren't re-processed)
-  t = t.replace(/`([^`]+)`/g, (_m, code) => `<code>${code}</code>`);
-  // Links [label](href)
-  t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, href) => {
-    return `<a href="${href}">${label}</a>`;
-  });
-  // Bold **x**
-  t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  // Italic *x*
-  t = t.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
-  return t;
 }
