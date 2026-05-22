@@ -8,9 +8,6 @@ RUN apt-get update && apt-get install -y git curl && rm -rf /var/lib/apt/lists/*
 # Install Claude Code CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
-# Install Google Workspace CLI (gws) for Calendar, Gmail, Drive integration
-RUN npm install -g @googleworkspace/cli
-
 # Add Claude to PATH
 ENV PATH="/root/.claude/bin:${PATH}"
 

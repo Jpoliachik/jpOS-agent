@@ -165,6 +165,23 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     );
   }
 
+  // Conditionally add Google Calendar MCP server
+  if (env.googleClientId && env.googleClientSecret && env.googleRefreshToken) {
+    mcpServers.google = {
+      command: "node",
+      args: [process.env.MCP_GOOGLE_PATH || "/app/dist/mcp/google.js"],
+      env: {
+        GOOGLE_CLIENT_ID: env.googleClientId,
+        GOOGLE_CLIENT_SECRET: env.googleClientSecret,
+        GOOGLE_REFRESH_TOKEN: env.googleRefreshToken,
+      },
+    };
+    allowedTools.push(
+      "mcp__google__gcal_agenda",
+      "mcp__google__gcal_create_event",
+    );
+  }
+
   // Add Linear MCP server
   mcpServers.linear = {
     command: "node",

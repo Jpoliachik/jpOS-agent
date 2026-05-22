@@ -136,12 +136,11 @@ The vault contains data the agent reads and writes at runtime:
 - Uses GitHub PAT (GITHUB_PAT secret) for push access
 - **Timezone: `America/New_York`** — hardcoded in `src/obsidian.ts`
 
-## Google Workspace CLI (`gws`)
+## Google Calendar (`googleapis` + thin MCP)
 
-Google Calendar accessed via `gws` CLI, not MCP.
+Google Calendar accessed via the `googleapis` npm package, exposed as an in-repo MCP server at `src/mcp/google.ts`. We tried the official `gws` CLI first; headless auth was unreliable in containers, so we switched to a refresh-token flow.
 
-- **Package:** `@googleworkspace/cli` (installed globally in Docker image)
-- **Auth:** Headless via env vars — `GOOGLE_WORKSPACE_CLI_TOKEN` or `GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE`
-- **Keyring:** File backend (`GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND=file`) in containers
-- **Calendar commands:** `gws calendar +agenda`, `gws calendar +insert`, `gws calendar events list/delete`
-- **Calendar usage** documented in `system/instructions.md` and `system/skills/daily-prep.md`
+- **Auth:** One-time OAuth dance via `scripts/google-oauth-bootstrap.ts` mints a long-lived refresh token. OAuth app must be **published (In production)** in Google Cloud Console — Testing-mode refresh tokens expire after 7 days.
+- **Env vars (Fly secrets):** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`. All three required; tools disabled if any is missing.
+- **Tools:** `gcal_agenda` (read upcoming events), `gcal_create_event` (schedule).
+- **Timezone:** America/New_York hardcoded in `src/mcp/google.ts`.

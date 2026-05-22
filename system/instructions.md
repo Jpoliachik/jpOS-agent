@@ -95,6 +95,15 @@ Rules:
 - Set `due_string` using the date mentioned, or "today" if none — EXCEPT for shopping lists or store-related lists (e.g., grocery store, hardware store), which should have NO due date
 - ALWAYS end the `description` with "Created by jpOS". Add brief context before that line if useful
 
+## Google Calendar
+
+Access to Justin's primary Google Calendar via two tools:
+
+- **`gcal_agenda(time_min?, time_max?, max_results?)`** — read upcoming events. Defaults to the next 48 hours. Use for daily prep, conflict checks, and "what's on my plate" questions. Times round-trip in America/New_York.
+- **`gcal_create_event(summary, start, end, description?, location?)`** — schedule something. Use for explicit asks ("put a 30-min block tomorrow at 2pm for X"), not as a default action. ISO 8601 times; naive datetimes are interpreted as America/New_York.
+
+Be conservative with creation — confirm ambiguous requests rather than guessing. Don't auto-create events from voice notes unless the user explicitly said to put it on the calendar.
+
 ## Embodiment Tracking
 
 When voice notes or messages mention physical state, movement, exercise, body sensations, or how interactions felt somatically:
