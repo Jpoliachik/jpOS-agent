@@ -25,39 +25,45 @@ const calendar = google.calendar({ version: "v3", auth: oauth2 });
 
 const tools = [
   {
+    name: "gcal_list_calendars",
+    description:
+      "List all calendars attached to the user's Google account (owned, shared, subscribed). " +
+      "Returns each calendar's id, name, primary flag, access role, and whether it's currently selected in the UI. " +
+      "Call this once to discover calendar IDs, then remember them (with category=\"reference\") so future calls can target the right calendar.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
     name: "gcal_agenda",
     description:
-      "List upcoming events from the user's primary Google Calendar. Defaults to the next 48 hours from now in America/New_York. " +
-      "Use this to see what's on the schedule for daily prep, conflict checks, or 'what do I have coming up' questions.",
+      "List upcoming events from one or more Google Calendars. Defaults to the next 48 hours across all calendars currently selected (visible) in the user's UI. " +
+      "Pass calendar_ids to target specific calendars (e.g. just work, just family). Events are prefixed with the calendar name so multi-calendar results stay legible. " +
+      "Use for daily prep, conflict checks, and 'what's on my plate' questions.",
     inputSchema: {
       type: "object",
       properties: {
-        time_min: {
-          type: "string",
-          description: "Lower bound (ISO 8601). Defaults to now.",
+        calendar_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Specific calendar IDs to query. Omit to use all selected calendars.",
         },
-        time_max: {
-          type: "string",
-          description: "Upper bound (ISO 8601). Defaults to 48 hours from time_min.",
-        },
-        max_results: {
-          type: "number",
-          description: "Max events to return (default 20).",
-        },
+        time_min: { type: "string", description: "Lower bound (ISO 8601). Defaults to now." },
+        time_max: { type: "string", description: "Upper bound (ISO 8601). Defaults to 48 hours from time_min." },
+        max_results: { type: "number", description: "Max events per calendar (default 20)." },
       },
     },
   },
   {
     name: "gcal_create_event",
     description:
-      "Create a new event on the user's primary Google Calendar. Use for scheduling, reminders, blocks. " +
-      "Times should be ISO 8601 strings; if you pass naive datetimes they're interpreted as America/New_York.",
+      "Create a new event on a specific Google Calendar. Defaults to the primary calendar; pass calendar_id to route work/family/etc. events to the right calendar. " +
+      "Times should be ISO 8601 strings; naive datetimes are interpreted as America/New_York.",
     inputSchema: {
       type: "object",
       properties: {
         summary: { type: "string", description: "Event title." },
         start: { type: "string", description: "Start time, ISO 8601." },
         end: { type: "string", description: "End time, ISO 8601." },
+        calendar_id: { type: "string", description: "Calendar ID to create the event on. Defaults to 'primary'." },
         description: { type: "string", description: "Optional details/notes." },
         location: { type: "string", description: "Optional location string." },
       },
@@ -67,6 +73,7 @@ const tools = [
 ];
 
 interface AgendaArgs {
+  calendar_ids?: string[];
   time_min?: string;
   time_max?: string;
   max_results?: number;
@@ -76,16 +83,31 @@ interface CreateEventArgs {
   summary: string;
   start: string;
   end: string;
+  calendar_id?: string;
   description?: string;
   location?: string;
 }
 
-function formatEvent(e: calendar_v3.Schema$Event): string {
+function formatEvent(e: calendar_v3.Schema$Event, calendarName: string): string {
   const start = e.start?.dateTime || e.start?.date || "?";
   const end = e.end?.dateTime || e.end?.date || "?";
   const title = e.summary || "(no title)";
   const loc = e.location ? ` @ ${e.location}` : "";
-  return `- ${start} → ${end}: ${title}${loc}`;
+  return `- [${calendarName}] ${start} → ${end}: ${title}${loc}`;
+}
+
+async function gcalListCalendars(): Promise<unknown> {
+  const res = await calendar.calendarList.list({ maxResults: 250 });
+  const items = res.data.items || [];
+  return items.map((c) => ({
+    id: c.id,
+    summary: c.summary,
+    summaryOverride: c.summaryOverride,
+    primary: c.primary || false,
+    selected: c.selected || false,
+    accessRole: c.accessRole,
+    backgroundColor: c.backgroundColor,
+  }));
 }
 
 async function gcalAgenda(args: AgendaArgs): Promise<string> {
@@ -93,27 +115,59 @@ async function gcalAgenda(args: AgendaArgs): Promise<string> {
   const timeMax =
     args.time_max ||
     new Date(new Date(timeMin).getTime() + 48 * 60 * 60 * 1000).toISOString();
+  const maxResults = args.max_results || 20;
 
-  const res = await calendar.events.list({
-    calendarId: "primary",
-    timeMin,
-    timeMax,
-    maxResults: args.max_results || 20,
-    singleEvents: true,
-    orderBy: "startTime",
-    timeZone: TIMEZONE,
+  // Resolve target calendars: explicit list, or all currently-selected from CalendarList.
+  let targets: Array<{ id: string; name: string }>;
+  if (args.calendar_ids && args.calendar_ids.length > 0) {
+    targets = args.calendar_ids.map((id) => ({ id, name: id }));
+  } else {
+    const list = await calendar.calendarList.list({ maxResults: 250 });
+    targets = (list.data.items || [])
+      .filter((c) => c.selected && c.id)
+      .map((c) => ({ id: c.id as string, name: c.summaryOverride || c.summary || c.id as string }));
+  }
+
+  if (targets.length === 0) {
+    return "No calendars to query (none selected, or none provided).";
+  }
+
+  // Fan out: one events.list per calendar, then merge + sort.
+  const results = await Promise.all(
+    targets.map(async (t) => {
+      try {
+        const res = await calendar.events.list({
+          calendarId: t.id,
+          timeMin,
+          timeMax,
+          maxResults,
+          singleEvents: true,
+          orderBy: "startTime",
+          timeZone: TIMEZONE,
+        });
+        return (res.data.items || []).map((e) => ({ event: e, calendarName: t.name }));
+      } catch (err) {
+        console.error(`[google-mcp] events.list failed for ${t.id}:`, err instanceof Error ? err.message : err);
+        return [];
+      }
+    }),
+  );
+
+  const merged = results.flat().sort((a, b) => {
+    const aStart = a.event.start?.dateTime || a.event.start?.date || "";
+    const bStart = b.event.start?.dateTime || b.event.start?.date || "";
+    return aStart.localeCompare(bStart);
   });
 
-  const events = res.data.items || [];
-  if (events.length === 0) {
-    return `No events between ${timeMin} and ${timeMax}.`;
+  if (merged.length === 0) {
+    return `No events between ${timeMin} and ${timeMax} across ${targets.length} calendar(s).`;
   }
-  return events.map(formatEvent).join("\n");
+  return merged.map(({ event, calendarName }) => formatEvent(event, calendarName)).join("\n");
 }
 
 async function gcalCreateEvent(args: CreateEventArgs): Promise<unknown> {
   const res = await calendar.events.insert({
-    calendarId: "primary",
+    calendarId: args.calendar_id || "primary",
     requestBody: {
       summary: args.summary,
       description: args.description,
@@ -133,6 +187,8 @@ async function gcalCreateEvent(args: CreateEventArgs): Promise<unknown> {
 
 async function handleToolCall(name: string, args: Record<string, unknown>): Promise<unknown> {
   switch (name) {
+    case "gcal_list_calendars":
+      return gcalListCalendars();
     case "gcal_agenda":
       return gcalAgenda(args as AgendaArgs);
     case "gcal_create_event":

@@ -177,6 +177,7 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
       },
     };
     allowedTools.push(
+      "mcp__google__gcal_list_calendars",
       "mcp__google__gcal_agenda",
       "mcp__google__gcal_create_event",
     );

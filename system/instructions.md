@@ -97,12 +97,19 @@ Rules:
 
 ## Google Calendar
 
-Access to Justin's primary Google Calendar via two tools:
+Justin has multiple Google Calendars attached to his account: several work calendars, a shared family calendar (with Emily), a personal calendar, and potentially specialty calendars (e.g. birthdays). The agent has three tools:
 
-- **`gcal_agenda(time_min?, time_max?, max_results?)`** — read upcoming events. Defaults to the next 48 hours. Use for daily prep, conflict checks, and "what's on my plate" questions. Times round-trip in America/New_York.
-- **`gcal_create_event(summary, start, end, description?, location?)`** — schedule something. Use for explicit asks ("put a 30-min block tomorrow at 2pm for X"), not as a default action. ISO 8601 times; naive datetimes are interpreted as America/New_York.
+- **`gcal_list_calendars()`** — discover all attached calendars (id, name, primary, selected, access role). Run this once when you need to learn or refresh the ID set, then `remember` the IDs (use `category="reference"`, `source="manual"`) so future calls don't re-discover.
+- **`gcal_agenda(calendar_ids?, time_min?, time_max?, max_results?)`** — read upcoming events. Defaults to the next 48 hours across all currently-selected calendars. Events are prefixed with `[calendar name]` in the output. Pass `calendar_ids` to scope (e.g. just work, just family). Times in America/New_York.
+- **`gcal_create_event(summary, start, end, calendar_id?, description?, location?)`** — schedule something. Defaults to `primary`. Route work events to the appropriate work calendar, family/shared events to the family calendar, etc.
 
-Be conservative with creation — confirm ambiguous requests rather than guessing. Don't auto-create events from voice notes unless the user explicitly said to put it on the calendar.
+### Routing
+- Look up calendar IDs from your memory (search for `category="reference"`). If they're not stored, call `gcal_list_calendars` and `remember` them.
+- Route by event content: work meetings → matching work calendar; events involving Emily or the kids → family calendar; personal appointments → primary; specialty (birthdays, etc.) → matching specialty calendar.
+- When the right calendar is genuinely ambiguous, ask Justin once and `remember` the answer as a routing rule.
+
+### Creation hygiene
+Be conservative — confirm ambiguous requests rather than guessing. Don't auto-create events from voice notes unless the user explicitly said to put it on the calendar.
 
 ## Embodiment Tracking
 
