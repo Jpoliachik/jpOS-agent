@@ -27,13 +27,23 @@ function getSecret(): string {
   return s;
 }
 
+// Custom URL-safe base64 variant: standard base64url alphabet but with `~`
+// substituted for `_`. Reason: Telegram's "Markdown" parse mode treats `_x_`
+// as italics and STRIPS the underscores from the rendered text, which
+// truncates tokens in DMs. `~` is RFC-3986 unreserved (URL-safe) and has no
+// Markdown meaning.
 function b64urlEncode(buf: Buffer | string): string {
   const b = typeof buf === "string" ? Buffer.from(buf, "utf-8") : buf;
-  return b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return b
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "~")
+    .replace(/=+$/, "");
 }
 
 function b64urlDecode(s: string): Buffer {
-  const padded = s.replace(/-/g, "+").replace(/_/g, "/") + "==".slice((s.length + 2) % 4);
+  const padded =
+    s.replace(/-/g, "+").replace(/~/g, "/") + "==".slice((s.length + 2) % 4);
   return Buffer.from(padded, "base64");
 }
 
