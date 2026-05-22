@@ -9,8 +9,8 @@
  *
  * Vault layout (runtime-mutable, under jpOS/ in the vault):
  *   jpOS/daily-log/YYYY-MM-DD.md — daily log entries (recent days loaded automatically)
- *   jpOS/weekly-digest/YYYY-WXX.md — weekly digests (last 4 loaded)
- *   jpOS/monthly-digest/YYYY-MM.md — monthly summaries (last 3 loaded)
+ *   jpOS/weekly-digest/YYYY-WXX.md — weekly digests (last 2 loaded)
+ *   jpOS/monthly-digest/YYYY-MM.md — monthly summaries (last 2 loaded)
  *
  * Durable atomic memory lives in the Qdrant store (see src/memory-store.ts) and
  * is injected per-message via auto-recall in agent.ts, not loaded here.
@@ -182,10 +182,10 @@ export function buildSystemContext(
     "Only the last 3 days are loaded above. To recall older days, use Glob/Read to browse and read files in that directory.",
     "",
     `> **Weekly digests** are stored at \`${join(VAULT_PATH, JPOS_DIR, "weekly-digest")}/YYYY-WXX.md\`. ` +
-    "Only the last 4 weeks are loaded above. To recall older weeks, use Glob/Read to browse that directory.",
+    "Only the last 2 weeks are loaded above. To recall older weeks, use Glob/Read to browse that directory.",
     "",
     `> **Monthly summaries** are stored at \`${join(VAULT_PATH, JPOS_DIR, "monthly-digest")}/YYYY-MM.md\`. ` +
-    "Only the last 3 months are loaded above. To recall older months, use Glob/Read to browse that directory.",
+    "Only the last 2 months are loaded above. To recall older months, use Glob/Read to browse that directory.",
     "",
   );
 

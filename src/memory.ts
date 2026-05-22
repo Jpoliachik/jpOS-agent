@@ -17,7 +17,7 @@ const MONTHLY_DIGEST_DIR = join(JPOS_DIR, "monthly-digest");
  * Load the most recent weekly digest files, concatenated newest-first.
  * Files are named YYYY-WXX.md (ISO week number).
  */
-export function loadWeeklyDigests(weeks: number = 4): string {
+export function loadWeeklyDigests(weeks: number = 2): string {
   const dir = join(VAULT_PATH, WEEKLY_DIGEST_DIR);
   if (!existsSync(dir)) return "";
 
@@ -48,7 +48,7 @@ export function loadWeeklyDigests(weeks: number = 4): string {
  * Load the most recent monthly digest files, concatenated newest-first.
  * Files are named YYYY-MM.md.
  */
-export function loadMonthlyDigests(months: number = 3): string {
+export function loadMonthlyDigests(months: number = 2): string {
   const dir = join(VAULT_PATH, MONTHLY_DIGEST_DIR);
   if (!existsSync(dir)) return "";
 

@@ -101,8 +101,8 @@ Claude Code skills that the agent can discover and invoke via the `Skill` tool d
 
 The vault contains data the agent reads and writes at runtime:
 
-- `jpOS/monthly-digest/` — Monthly summaries (`YYYY-MM.md`), last 3 months loaded automatically
-- `jpOS/weekly-digest/` — Weekly digests (`YYYY-WXX.md`), last 4 weeks loaded automatically
+- `jpOS/monthly-digest/` — Monthly summaries (`YYYY-MM.md`), last 2 months loaded automatically
+- `jpOS/weekly-digest/` — Weekly digests (`YYYY-WXX.md`), last 2 weeks loaded automatically
 - `jpOS/daily-log/` — Daily log entries (`YYYY-MM-DD.md`), last 3 days loaded automatically
 - `jpOS/voice-notes/` — Daily voice note logs
 - `jpOS/context/` — Stable reference files (projects, people, goals — no assumed filenames)
