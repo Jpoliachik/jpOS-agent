@@ -39,4 +39,7 @@ export const env = {
   googleClientId: process.env.GOOGLE_CLIENT_ID || "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
   googleRefreshToken: process.env.GOOGLE_REFRESH_TOKEN || "",
+  // Pages layer (read-only HTML pages the agent publishes)
+  pageSigningSecret: process.env.PAGE_SIGNING_SECRET || "",
+  publicBaseUrl: process.env.PUBLIC_BASE_URL || "https://jpos-agent.fly.dev",
 };

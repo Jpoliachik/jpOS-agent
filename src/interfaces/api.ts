@@ -12,6 +12,8 @@ import {
   remember,
   getMemoryById,
 } from "../memory-store.js";
+import { pagesPlugin } from "../pages/routes.js";
+import { listPages } from "../pages/store.js";
 
 function verifyWebhookSignature(rawBody: Buffer, signature: string, secret: string): boolean {
   const expected =
@@ -45,6 +47,9 @@ export async function createApiServer() {
   server.get("/health", async () => {
     return { status: "ok" };
   });
+
+  // Read-only page routes (auth via signed ?t= token, not bearer)
+  await server.register(pagesPlugin);
 
   // Ramble webhook (verified via HMAC-SHA256 signature)
   server.post<{
@@ -206,6 +211,13 @@ export async function createApiServer() {
         }
       },
     );
+
+    // ---- Pages index (bearer-auth listing of published pages) -----------
+    app.get<{ Querystring: { limit?: string } }>("/pages", async (request) => {
+      const limit = request.query.limit ? parseInt(request.query.limit, 10) : 50;
+      const pages = listPages(Number.isFinite(limit) ? limit : 50);
+      return { count: pages.length, pages };
+    });
 
     // ---- Main agent endpoint --------------------------------------------
     app.post<{

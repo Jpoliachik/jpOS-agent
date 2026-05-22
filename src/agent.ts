@@ -183,6 +183,24 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     );
   }
 
+  // Add Pages MCP server (only when signing secret is configured)
+  if (env.pageSigningSecret) {
+    mcpServers.pages = {
+      command: "node",
+      args: [process.env.MCP_PAGES_PATH || "/app/dist/mcp/pages.js"],
+      env: {
+        PAGE_SIGNING_SECRET: env.pageSigningSecret,
+        PUBLIC_BASE_URL: env.publicBaseUrl,
+        ...(process.env.PAGES_DIR ? { PAGES_DIR: process.env.PAGES_DIR } : {}),
+      },
+    };
+    allowedTools.push(
+      "mcp__pages__publish_page",
+      "mcp__pages__mint_page_link",
+      "mcp__pages__list_pages",
+    );
+  }
+
   // Add Linear MCP server
   mcpServers.linear = {
     command: "node",
