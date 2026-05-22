@@ -201,6 +201,14 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     );
   }
 
+  // Add Weather MCP server (no config needed — free public API)
+  mcpServers.weather = {
+    command: "node",
+    args: [process.env.MCP_WEATHER_PATH || "/app/dist/mcp/weather.js"],
+    env: {},
+  };
+  allowedTools.push("mcp__weather__weather_today");
+
   // Add Linear MCP server
   mcpServers.linear = {
     command: "node",
