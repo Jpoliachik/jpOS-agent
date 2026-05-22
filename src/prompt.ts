@@ -8,8 +8,12 @@
  *   system/skills/<name>.md   — per-skill prompts (voice-note, daily-prep, message, eod-checkin)
  *
  * Vault layout (runtime-mutable, under jpOS/ in the vault):
- *   jpOS/memory.md             — durable memory
  *   jpOS/daily-log/YYYY-MM-DD.md — daily log entries (recent days loaded automatically)
+ *   jpOS/weekly-digest/YYYY-WXX.md — weekly digests (last 4 loaded)
+ *   jpOS/monthly-digest/YYYY-MM.md — monthly summaries (last 3 loaded)
+ *
+ * Durable atomic memory lives in the Qdrant store (see src/memory-store.ts) and
+ * is injected per-message via auto-recall in agent.ts, not loaded here.
  *
  * Template variables in .md files are replaced at load time:
  *   {{date}}        — today's date (YYYY-MM-DD, America/New_York)
@@ -22,7 +26,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VAULT_PATH, JPOS_DIR } from "./obsidian.js";
-import { loadDurableMemory, loadRecentMemory, loadWeeklyDigests, loadMonthlyDigests } from "./memory.js";
+import { loadRecentMemory, loadWeeklyDigests, loadMonthlyDigests } from "./memory.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -141,7 +145,6 @@ export function buildSystemContext(
     );
   }
 
-  const durableMemory = loadDurableMemory();
   const monthlyDigests = loadMonthlyDigests();
   const weeklyDigests = loadWeeklyDigests();
   const recentMemory = loadRecentMemory();
@@ -159,10 +162,6 @@ export function buildSystemContext(
 
   if (instructions) {
     parts.push(instructions, "");
-  }
-
-  if (durableMemory) {
-    parts.push("# Memory", "", durableMemory, "");
   }
 
   if (monthlyDigests) {

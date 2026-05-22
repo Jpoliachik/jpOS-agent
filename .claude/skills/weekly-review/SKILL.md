@@ -9,19 +9,19 @@ Synthesize the past week's daily logs into a weekly digest. This is a compressio
 
 ## Philosophy
 
-Daily logs are high-fidelity, short-lived. Durable memory (`memory.md`) is identity-level, permanent. Weekly digests fill the gap: medium-detail, medium-duration context that would otherwise be lost after 3 days.
+Daily logs are high-fidelity, short-lived. The Qdrant memory store holds atomic durable facts, permanent and searchable via `recall`. Weekly digests fill the gap: medium-detail, medium-duration context that would otherwise be lost after 3 days.
 
-This is not a productivity report. It's pattern recognition. What threads are emerging? What insights felt important but didn't obviously belong in durable memory? What's the shape of the week?
+This is not a productivity report. It's pattern recognition. What threads are emerging? What insights felt important but didn't obviously belong as standalone memories? What's the shape of the week?
 
 ## Steps
 
 1. **Read the past 7 daily logs** from `{{vault_path}}/jpOS/daily-log/`. Files are named `YYYY-MM-DD.md`. Work with what's there if fewer than 7 exist.
 
-2. **Read current `memory.md`** to understand what's already captured durably — don't repeat it.
+2. **Check the memory store** for what's already captured durably — `recall` relevant topics before promoting anything new, so you don't write duplicates. (The dedup step on `remember` will catch near-duplicates anyway, but it's still cheaper to skip the call.)
 
 3. **Synthesize the digest** using the format below. Write it to `{{vault_path}}/jpOS/weekly-digest/{{week_file}}`.
 
-4. **Promote to durable memory** if anything from this week clearly belongs in `memory.md` — new projects, significant life changes, updated preferences, relationship developments. Edit `memory.md` directly. Note what you promoted in the digest.
+4. **Promote to durable memory** by calling `remember` for any atomic facts from this week worth carrying forward — new projects, significant life changes, updated preferences, relationship developments. One fact per call, third-person, with appropriate `source` and `category`. Note what you promoted in the digest.
 
 5. **Do NOT message Justin.** This is background processing. Silent by default.
 
@@ -53,7 +53,7 @@ Write the digest as a markdown file with this structure:
 - Intentions stated but not yet acted on
 
 ## Promoted to Memory
-- What (if anything) was added to memory.md this week, and why
+- What (if anything) was written to the memory store this week, and why
 - "Nothing promoted" is fine — not every week has durable-level signal
 ```
 

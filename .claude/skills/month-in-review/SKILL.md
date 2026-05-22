@@ -13,7 +13,7 @@ This is the third layer of graduated compression:
 - **Daily logs** → high fidelity, 3-day window
 - **Weekly digests** → patterns and insights, ~4-week window
 - **Monthly summaries** → broader arcs and trends, ~3-month window
-- **Durable memory** (`memory.md`) → identity-level, permanent
+- **Memory store** (Qdrant, via `remember`/`recall`) → atomic durable facts, permanent and searchable
 
 Each layer compresses further and surfaces what matters at a longer timescale. A monthly summary shouldn't rehash what's in the weekly digests — it should name what only becomes visible when you zoom out.
 
@@ -21,15 +21,15 @@ Each layer compresses further and surfaces what matters at a longer timescale. A
 
 1. **Read the weekly digests for the past month** from `{{vault_path}}/jpOS/weekly-digest/`. Files are named `YYYY-WXX.md`. Read the 4-5 that cover the previous month.
 
-2. **Read current `memory.md`** to understand what's already captured durably — don't repeat it.
+2. **Check the memory store** for what's already captured durably — `recall` relevant topics before promoting anything new, so you don't write duplicates.
 
 3. **Optionally skim daily logs** if a weekly digest references something worth expanding on. Don't read all of them — the weekly digests have already done the compression.
 
 4. **Synthesize the monthly summary** using the format below. Write it to `{{vault_path}}/jpOS/monthly-digest/{{month_file}}`.
 
-5. **Promote to durable memory** if anything from this month clearly belongs in `memory.md` — significant life shifts, new long-term goals, changed preferences, relationship developments. Edit `memory.md` directly. Note what you promoted.
+5. **Promote to durable memory** by calling `remember` for any atomic facts from this month worth carrying forward — significant life shifts, new long-term goals, changed preferences, relationship developments. One fact per call, third-person, with appropriate `source` and `category`. Note what you promoted.
 
-6. **Consider running a memory prune.** After a month of accumulation, stale entries are more likely. If you notice obviously outdated entries in memory.md during step 2, clean them up.
+6. **Consider running a memory prune.** After a month of accumulation, stale entries are more likely. Invoke the `memory-prune` skill if entries in the store feel out of date.
 
 7. **Do NOT message Justin.** This is background processing. Silent by default.
 
@@ -61,7 +61,7 @@ Write the summary as a markdown file:
 - Questions that keep surfacing
 
 ## Promoted to Memory
-- What (if anything) was added to or updated in memory.md
+- What (if anything) was written to or updated in the memory store
 - "Nothing promoted" is fine
 ```
 

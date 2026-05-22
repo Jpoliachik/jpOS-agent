@@ -145,7 +145,7 @@ async function runWeeklyReview(): Promise<void> {
     const systemContext = buildSystemContext();
     const response = await Promise.race([
       runAgent({
-        prompt: "Run the weekly-review skill: synthesize the past 7 daily logs into a weekly digest and promote anything durable to memory.md.",
+        prompt: "Run the weekly-review skill: synthesize the past 7 daily logs into a weekly digest and call `remember` for any durable atomic facts worth carrying forward.",
         externalId: "cron:weekly-review",
         systemContext,
         autoRecall: false,
@@ -184,7 +184,7 @@ async function runMonthlyReview(): Promise<void> {
     const systemContext = buildSystemContext();
     const response = await Promise.race([
       runAgent({
-        prompt: "Run the month-in-review skill: compress the past month's weekly digests into a monthly summary and promote anything durable to memory.md.",
+        prompt: "Run the month-in-review skill: compress the past month's weekly digests into a monthly summary and call `remember` for any durable atomic facts worth carrying forward.",
         externalId: "cron:monthly-review",
         systemContext,
         autoRecall: false,

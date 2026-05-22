@@ -9,7 +9,7 @@ Personal AI agent hosted on Fly.io with Telegram and HTTP API interfaces.
 - **This repo (`system/`):** Durable, human-authored prompts — identity (`soul.md`), instructions (`instructions.md`), trigger-specific skills (`skills/*.md`). Version-controlled, reviewed in PRs.
 - **This repo (`.claude/skills/`):** On-demand Claude Code skills — discoverable by the agent and invocable via the `Skill` tool during any conversation. Use this for reusable capabilities that aren't tied to a specific trigger.
 - **This repo (`src/`):** Runtime code, tool call implementations, integrations, interfaces (Telegram, API), infrastructure.
-- **Obsidian vault:** Runtime-mutable agent data — memory (`memory.md`), daily logs (`daily-log/`), voice notes (`voice-notes/`), context files (`context/`). Anything the agent writes or modifies at runtime.
+- **Obsidian vault:** Runtime-mutable agent data — daily logs (`daily-log/`), weekly/monthly digests, voice notes (`voice-notes/`), context files (`context/`). Anything the agent writes or modifies at runtime. (Atomic durable memory lives in Qdrant, not the vault.)
 
 ### Agent-first design: expose tools, don't make assumptions
 
@@ -33,8 +33,8 @@ CLI tools (invoked via Bash) are more token-efficient than MCP tool definitions 
 
 - `src/agent.ts` - Agent SDK wrapper with session management + auto-recall step
 - `src/prompt.ts` - Builds system prompt from repo system files + vault memory
-- `src/memory.ts` - **(legacy, being phased out)** File-based reader for vault digests/daily logs
-- `src/memory-store.ts` - **Qdrant + OpenAI memory store.** Primary memory layer.
+- `src/memory.ts` - File-based reader for vault digests/daily logs (NOT durable memory — that's Qdrant)
+- `src/memory-store.ts` - **Qdrant + OpenAI memory store.** Sole durable memory layer.
 - `src/interfaces/telegram.ts` - Telegram bot (grammy)
 - `src/interfaces/api.ts` - HTTP API (Fastify) + memory inspection endpoints
 - `src/mcp/memory.ts` - Memory MCP server (`remember`, `recall`, `list_memories`, `forget`, `update_memory`)
@@ -90,7 +90,7 @@ Claude Code skills that the agent can discover and invoke via the `Skill` tool d
 
 - `.claude/skills/weekly-review/SKILL.md` — Weekly digest synthesis (also triggered by cron Sunday 8 PM ET)
 - `.claude/skills/month-in-review/SKILL.md` — Monthly summary from weekly digests (also triggered by cron 1st of month 8 PM ET)
-- `.claude/skills/memory-prune/SKILL.md` — Review and prune stale memory.md entries
+- `.claude/skills/memory-prune/SKILL.md` — Review and prune stale memory store entries
 - `.claude/skills/project-status/SKILL.md` — Pull project state from all available sources
 
 ### Template Variables
@@ -101,7 +101,6 @@ Claude Code skills that the agent can discover and invoke via the `Skill` tool d
 
 The vault contains data the agent reads and writes at runtime:
 
-- `jpOS/memory.md` — Durable memory (always loaded into system prompt)
 - `jpOS/monthly-digest/` — Monthly summaries (`YYYY-MM.md`), last 3 months loaded automatically
 - `jpOS/weekly-digest/` — Weekly digests (`YYYY-WXX.md`), last 4 weeks loaded automatically
 - `jpOS/daily-log/` — Daily log entries (`YYYY-MM-DD.md`), last 3 days loaded automatically

@@ -1,31 +1,17 @@
 /**
- * Memory system — reads memory from the Obsidian vault.
+ * Vault digest loaders — reads daily logs, weekly digests, and monthly
+ * summaries from the Obsidian vault for inclusion in the system prompt.
  *
- * Two sources:
- *   jpOS/memory.md              — durable memory (always loaded)
- *   jpOS/daily-log/YYYY-MM-DD.md — daily log entries (recent N days loaded)
+ * Atomic durable memory lives in Qdrant (see src/memory-store.ts), not here.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { VAULT_PATH, JPOS_DIR } from "./obsidian.js";
 
-const MEMORY_FILE = join(JPOS_DIR, "memory.md");
 const DAILY_LOG_DIR = join(JPOS_DIR, "daily-log");
 const WEEKLY_DIGEST_DIR = join(JPOS_DIR, "weekly-digest");
 const MONTHLY_DIGEST_DIR = join(JPOS_DIR, "monthly-digest");
-
-/**
- * Load the durable memory file (jpOS/memory.md).
- */
-export function loadDurableMemory(): string {
-  const path = join(VAULT_PATH, MEMORY_FILE);
-  try {
-    return readFileSync(path, "utf-8").trim();
-  } catch {
-    return "";
-  }
-}
 
 /**
  * Load the most recent weekly digest files, concatenated newest-first.
