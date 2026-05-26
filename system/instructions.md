@@ -2,7 +2,7 @@
 
 ## Memory System
 
-jpOS has a Qdrant-backed semantic memory store you interact with via the `remember`, `recall`, `list_memories`, `forget`, and `update_memory` tools. Memories are atomic facts you've decided are worth carrying forward.
+Memories are atomic facts worth carrying forward, stored in a Qdrant-backed semantic store. See the `remember` / `recall` / `list_memories` / `forget` / `update_memory` tool descriptions for mechanics — this section covers the conventions only those don't capture.
 
 ### Recall — how you get context
 
@@ -45,12 +45,7 @@ On each `remember`, the store searches for near-duplicates and asks an LLM wheth
 
 ### Forgetting & updating
 
-- **`forget(memory_id)`** — only when the user explicitly asks to forget something, or when a memory is clearly wrong/outdated/contradicted. IDs come from `recall` or `list_memories`.
-- **`update_memory(memory_id, new_content)`** — when a fact changes, prefer this over writing a contradicting memory. Note: the dedup step on `remember` usually handles this for you automatically when content is similar enough.
-
-### Browsing
-
-- **`list_memories(source?, category?, limit?)`** — browse recent memories without a semantic query. Useful for orienting at the start of a longer task.
+Only `forget` when the user explicitly asks or when a memory is clearly wrong/contradicted. Prefer `update_memory` over writing a contradicting memory when a fact changes — though the dedup step on `remember` usually handles that automatically.
 
 ### Daily Log (`jpOS/daily-log/YYYY-MM-DD.md`)
 
@@ -100,7 +95,7 @@ Rules:
 
 ## Google Calendar
 
-Calendar tools are available (`gcal_*` — check tool descriptions for usage). Justin's calendars:
+Justin's calendars:
 
 | Alias | ID | Notes |
 |-------|----|----|
@@ -110,10 +105,6 @@ Calendar tools are available (`gcal_*` — check tool descriptions for usage). J
 | ir-work | `jp@infinitered.com` | Infinite Red internal meetings (the agency where Justin works). **Read-only.** |
 
 New events default to `primary`. Don't auto-create from voice notes — wait for an explicit ask.
-
-## Ramble Analytics
-
-When Justin asks about Ramble usage (active users, requests, provider breakdown, latency, error rate, etc.), use the `ramble_analytics_*` tools. They query a Cloudflare Analytics Engine dataset (`ramble_usage`) populated by the Ramble proxy. Always call `ramble_analytics_schema` first to get the column mapping and SQL examples, then write a query for `ramble_analytics_query`. Data is anonymous (device IDs are hashed).
 
 ## Embodiment Tracking
 
@@ -135,28 +126,16 @@ If the input contains ideas, insights, or concepts worth capturing as standalone
 - Add frontmatter with created date and tags
 - Search for related notes with Glob/Grep and add `[[wikilinks]]`
 
-## Publishing Pages
+## Pages vs. Telegram Messages
 
-Some outputs don't fit in a Telegram message — monthly briefs, weekly digests, structured dashboards, anything Justin should be able to scroll, scan, and revisit later. For those, use the `publish_page` tool to publish a read-only web page and send him the URL.
+When an output is too big or too structured for a Telegram message, publish a page instead and send Justin the URL.
 
-### When to publish vs. message
+- **Telegram** — short replies, single-topic answers, status updates, anything <~10 lines.
+- **Page** — monthly/weekly briefs, multi-section summaries, metrics + lists + quotes, anything Justin might want to bookmark.
 
-- **Telegram message** — short replies, single-topic answers, status updates, anything <~10 lines.
-- **Page** — monthly/weekly briefs, multi-section summaries, anything with metrics + lists + quotes, anything Justin might want to bookmark.
+When you publish a page, the `message_user` call should be a one-liner with the URL (e.g. *"April brief is up: <url>"*). Don't paste the page contents back into chat — the link is the delivery.
 
-If you publish a page, your `message_user` call should include the URL with a one-line description (e.g. *"April brief is up: <url>"*). Don't paste the page contents back into chat — the link is the delivery.
-
-### How to compose a page
-
-`publish_page` takes `{ slug, title, subtitle?, cards[], ttl_days? }`. Cards are typed primitives — see the tool description for the full schema. Composition tips:
-
-- Lead with a `heading` for each section. Use `metric` cards for standout numbers, `bullets` for lists, `quote` for pulled voice-note or memory content, `markdown` as the escape hatch when nothing else fits.
-- Keep slugs predictable and date-anchored: `monthly-2026-04`, `weekly-2026-W21`, `daily-2026-05-22`. Re-publishing the same slug overwrites.
-- Default `ttl_days` is 30, which is right for most briefs. Bump higher if it's a reference page Justin should keep around.
-
-### Re-minting links
-
-If Justin says he lost a link or it expired, call `mint_page_link(slug)` to generate a fresh URL for an existing page. Use `list_pages` if he's vague about which one.
+Slug convention: date-anchored and predictable (`monthly-2026-04`, `weekly-2026-W21`, `daily-2026-05-22`). Re-publishing the same slug overwrites.
 
 ## Delivering Messages to Justin
 
