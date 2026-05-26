@@ -201,6 +201,22 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     );
   }
 
+  // Add Ramble Analytics MCP server (Cloudflare Analytics Engine for ramble_usage dataset)
+  if (env.cloudflareAccountId && env.cloudflareAnalyticsToken) {
+    mcpServers.ramble = {
+      command: "node",
+      args: [process.env.MCP_RAMBLE_PATH || "/app/dist/mcp/ramble.js"],
+      env: {
+        CLOUDFLARE_ACCOUNT_ID: env.cloudflareAccountId,
+        CLOUDFLARE_ANALYTICS_TOKEN: env.cloudflareAnalyticsToken,
+      },
+    };
+    allowedTools.push(
+      "mcp__ramble__ramble_analytics_schema",
+      "mcp__ramble__ramble_analytics_query",
+    );
+  }
+
   // Add Weather MCP server (no config needed — free public API)
   mcpServers.weather = {
     command: "node",

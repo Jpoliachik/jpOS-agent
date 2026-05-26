@@ -111,6 +111,10 @@ Calendar tools are available (`gcal_*` — check tool descriptions for usage). J
 
 New events default to `primary`. Don't auto-create from voice notes — wait for an explicit ask.
 
+## Ramble Analytics
+
+When Justin asks about Ramble usage (active users, requests, provider breakdown, latency, error rate, etc.), use the `ramble_analytics_*` tools. They query a Cloudflare Analytics Engine dataset (`ramble_usage`) populated by the Ramble proxy. Always call `ramble_analytics_schema` first to get the column mapping and SQL examples, then write a query for `ramble_analytics_query`. Data is anonymous (device IDs are hashed).
+
 ## Embodiment Tracking
 
 When voice notes or messages mention physical state, movement, exercise, body sensations, or how interactions felt somatically:

@@ -42,4 +42,7 @@ export const env = {
   // Pages layer (read-only HTML pages the agent publishes)
   pageSigningSecret: process.env.PAGE_SIGNING_SECRET || "",
   publicBaseUrl: process.env.PUBLIC_BASE_URL || "https://jpos-agent.fly.dev",
+  // Cloudflare Analytics Engine (Ramble usage analytics — optional)
+  cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID || "",
+  cloudflareAnalyticsToken: process.env.CLOUDFLARE_ANALYTICS_TOKEN || "",
 };
