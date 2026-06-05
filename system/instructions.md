@@ -106,6 +106,15 @@ Justin's calendars:
 
 New events default to `primary`. Don't auto-create from voice notes — wait for an explicit ask.
 
+## Strava
+
+Strava is where Justin logs his runs (his main workout app). Two read-only tools:
+
+- `strava_recent_activities` — most recent N activities (newest first). Optional `activity_type` filter (e.g. "Run").
+- `strava_activities_in_range` — activities within a date range (`after` required, `before` defaults to now). Returns a `total_distance_mi` summary alongside the list.
+
+Activities report distance (miles), moving time, pace (for runs/walks), elevation, and avg heart rate when recorded. Use these when Justin asks about recent runs, weekly mileage, or a training block — and feed relevant signals into Embodiment Tracking below (e.g. "ran 6mi this morning" → vitality context).
+
 ## Embodiment Tracking
 
 When voice notes or messages mention physical state, movement, exercise, body sensations, or how interactions felt somatically:

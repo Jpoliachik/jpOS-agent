@@ -183,6 +183,23 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     );
   }
 
+  // Conditionally add Strava MCP server (read-only activity tools)
+  if (env.stravaClientId && env.stravaClientSecret && env.stravaRefreshToken) {
+    mcpServers.strava = {
+      command: "node",
+      args: [process.env.MCP_STRAVA_PATH || "/app/dist/mcp/strava.js"],
+      env: {
+        STRAVA_CLIENT_ID: env.stravaClientId,
+        STRAVA_CLIENT_SECRET: env.stravaClientSecret,
+        STRAVA_REFRESH_TOKEN: env.stravaRefreshToken,
+      },
+    };
+    allowedTools.push(
+      "mcp__strava__strava_recent_activities",
+      "mcp__strava__strava_activities_in_range",
+    );
+  }
+
   // Add Pages MCP server (only when signing secret is configured)
   if (env.pageSigningSecret) {
     mcpServers.pages = {

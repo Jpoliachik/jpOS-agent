@@ -143,3 +143,13 @@ Google Calendar accessed via the `googleapis` npm package, exposed as an in-repo
 - **Env vars (Fly secrets):** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`. All three required; tools disabled if any is missing.
 - **Tools:** `gcal_agenda` (read upcoming events), `gcal_create_event` (schedule).
 - **Timezone:** America/New_York hardcoded in `src/mcp/google.ts`.
+
+## Strava (read-only, thin MCP)
+
+Read-only access to Justin's Strava activities (runs are the primary use case), exposed as an in-repo MCP server at `src/mcp/strava.ts`. Plain `fetch` against the Strava V3 API — no SDK. Mirrors the Google Calendar refresh-token pattern.
+
+- **Auth:** One-time OAuth dance via `scripts/strava-oauth-bootstrap.ts` mints a long-lived refresh token (scope `activity:read_all`). Strava refresh tokens don't expire and aren't rotated on refresh, so no persistence is needed; the MCP server trades the refresh token for a ~6h access token on first use and caches it for the process lifetime.
+- **Setup:** Register an API app at https://www.strava.com/settings/api (callback domain `localhost`) to get the client ID/secret.
+- **Env vars (Fly secrets):** `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REFRESH_TOKEN`. All three required; tools disabled if any is missing.
+- **Tools:** `strava_recent_activities` (most recent N, optional type filter), `strava_activities_in_range` (date range, returns `total_distance_mi` summary). Both report distance (mi), moving time, pace (foot sports), elevation (ft), and avg HR.
+- **Timezone:** America/New_York hardcoded in `src/mcp/strava.ts`.
