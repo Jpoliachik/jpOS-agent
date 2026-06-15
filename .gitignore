@@ -33,3 +33,10 @@ Thumbs.db
 
 # Claude Agent SDK sessions (if stored locally)
 .claude-sessions/
+
+# Local structured-data SQLite store (dev)
+data/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal

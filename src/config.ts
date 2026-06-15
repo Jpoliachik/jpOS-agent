@@ -45,4 +45,6 @@ export const env = {
   // Cloudflare Analytics Engine (Ramble usage analytics — optional)
   cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID || "",
   cloudflareAnalyticsToken: process.env.CLOUDFLARE_ANALYTICS_TOKEN || "",
+  // Structured-data store (SQLite/libSQL). Default: file on the Fly volume.
+  databaseUrl: process.env.DATABASE_URL || "file:/data/jpos.db",
 };

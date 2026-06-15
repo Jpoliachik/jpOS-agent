@@ -1,0 +1,23 @@
+# Litestream — continuous backup for the structured-data SQLite store.
+#
+# Active only when LITESTREAM_BUCKET is set (see scripts/docker-entrypoint.sh).
+# Streams every change in /data/jpos.db to an S3-compatible bucket (Fly Tigris
+# or Cloudflare R2), enabling point-in-time restore if the volume is lost.
+#
+# Set these as Fly secrets:
+#   LITESTREAM_BUCKET            e.g. jpos-db-backups
+#   LITESTREAM_ENDPOINT          e.g. https://fly.storage.tigris.dev (Tigris)
+#   LITESTREAM_REGION            e.g. auto
+#   LITESTREAM_ACCESS_KEY_ID
+#   LITESTREAM_SECRET_ACCESS_KEY
+dbs:
+  - path: /data/jpos.db
+    replicas:
+      - type: s3
+        bucket: "${LITESTREAM_BUCKET}"
+        path: jpos.db
+        endpoint: "${LITESTREAM_ENDPOINT}"
+        region: "${LITESTREAM_REGION}"
+        access-key-id: "${LITESTREAM_ACCESS_KEY_ID}"
+        secret-access-key: "${LITESTREAM_SECRET_ACCESS_KEY}"
+        force-path-style: true

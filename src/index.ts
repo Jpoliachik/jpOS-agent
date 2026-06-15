@@ -4,9 +4,13 @@ import { createApiServer } from "./interfaces/api.js";
 import { startCronJobs } from "./cron.js";
 import { ensureVaultCloned } from "./obsidian.js";
 import { startVaultSync, stopVaultSync } from "./vault-sync.js";
+import { initDb } from "./db/index.js";
 
 async function main() {
   console.log("Starting jpOS Agent...");
+
+  // Bring the structured-data store up to date before serving requests
+  await initDb();
 
   // Clone/init vault before accepting any requests
   await ensureVaultCloned();

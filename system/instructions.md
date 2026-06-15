@@ -62,6 +62,39 @@ Skip routine acknowledgments and small talk. One entry per interaction, appended
 
 Use this for the **human-readable narrative**; use `remember` for **atomic facts**. They serve different purposes — the daily log is a journal, the memory store is searchable knowledge.
 
+## Structured Data (SQLite)
+
+A SQLite/libSQL store holds **structured, reliably-queryable data about Justin** — things you want exact answers, sorting, and date math over, not fuzzy recall. It's a different tool from the memory store:
+
+- **Memory (Qdrant):** fuzzy semantic recall of atomic facts ("what do I know about Sarah").
+- **Structured DB:** precise queries ("who am I overdue to contact", "sort by last_contacted"). Vector search can't answer these reliably; SQL can.
+
+This is also the **right home for sensitive structured personal data** — it lives in a local DB file, not the git-backed Obsidian vault. Prefer it over markdown for anything you'd want to query.
+
+**Tools:**
+
+- `db_tables` — list available tables + columns. Call this first if you're unsure of the schema.
+- `db_query(sql)` — run a read-only `SELECT`/`WITH` (single statement). Use SQLite date functions like `julianday('now')` for date math.
+- `contact_save(...)` — create or update a contact (the Rolodex). Omit `id` to create (name required); pass `id` to update (only the fields you include change).
+- `contact_log_touch(contact_id, ...)` — record a touchpoint; auto-advances `last_contacted`.
+
+### Contacts / Rolodex
+
+People Justin wants to stay in touch with. The point is to answer **"who am I overdue to reach out to?"** — so when a contact has a cadence goal, keep `cadence_days` and `last_contacted` current.
+
+- When Justin mentions someone he wants to keep in touch with, `contact_save` them (set `cadence_days` if he names or implies a frequency).
+- When he mentions actually connecting with someone (call, text, saw them), `contact_log_touch` to bump their `last_contacted`. Find the contact's `id` first with `db_query`.
+- Overdue query pattern:
+  ```sql
+  SELECT name, last_contacted, cadence_days
+  FROM contacts
+  WHERE cadence_days IS NOT NULL
+    AND (last_contacted IS NULL OR julianday('now') - julianday(last_contacted) >= cadence_days)
+  ORDER BY last_contacted
+  ```
+
+Still `remember` atomic facts about people for ambient recall (e.g. "Sarah just had a second kid") — the DB is the source of truth for *who and when*, memory is for *context*. Rich freeform detail can go in the contact's `notes` field.
+
 ## Project Routing
 
 When voice notes or messages contain project-specific thoughts (feedback, ideas, backlog items, product vision):

@@ -217,6 +217,21 @@ export async function runAgent(params: RunAgentParams): Promise<AgentResponse> {
     );
   }
 
+  // Add structured-data DB MCP server (SQLite/libSQL — always on)
+  mcpServers.db = {
+    command: "node",
+    args: [process.env.MCP_DB_PATH || "/app/dist/mcp/db.js"],
+    env: {
+      DATABASE_URL: env.databaseUrl,
+    },
+  };
+  allowedTools.push(
+    "mcp__db__db_query",
+    "mcp__db__db_tables",
+    "mcp__db__contact_save",
+    "mcp__db__contact_log_touch",
+  );
+
   // Add Weather MCP server (no config needed — free public API)
   mcpServers.weather = {
     command: "node",

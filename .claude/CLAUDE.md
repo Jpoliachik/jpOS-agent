@@ -39,6 +39,8 @@ CLI tools (invoked via Bash) are more token-efficient than MCP tool definitions 
 - `src/interfaces/api.ts` - HTTP API (Fastify) + memory inspection endpoints
 - `src/mcp/memory.ts` - Memory MCP server (`remember`, `recall`, `list_memories`, `forget`, `update_memory`)
 - `src/mcp/todoist.ts` - Todoist MCP server
+- `src/mcp/db.ts` - Structured-data MCP server (`db_query`, `db_tables`, `contact_save`, `contact_log_touch`)
+- `src/db/` - Structured-data store: client, migrations, Zod schemas, per-table repositories
 - `src/obsidian.ts` - Git operations for Obsidian vault
 
 ## Memory layer (Qdrant + OpenAI)
@@ -55,6 +57,29 @@ The agent's long-term memory is a thin wrapper (~300 LOC in `src/memory-store.ts
 ### Auto-recall
 
 `runAgent()` embeds the incoming user message, searches Qdrant for top-K (default 5), and injects results into the system prompt under a `# Recalled Memories` section. Fail-graceful: if Qdrant is down, the agent still responds without recalled context. Opt out by passing `autoRecall: false` (used for all cron jobs — their prompts are meta-instructions, not queries).
+
+## Structured Data Store (SQLite/libSQL)
+
+For **structured, reliably-queryable data about JP** — the kind you want exact SQL queries, sorting, and date math over (contacts/Rolodex, and later workouts, sleep, etc.). Complements the two existing stores: Qdrant is for fuzzy semantic recall, the vault is human-readable markdown, this is for precise queries. It's also the preferred home for sensitive structured personal data, since it's a local DB file rather than the git-backed (GitHub-hosted) vault.
+
+- **Engine:** SQLite via `@libsql/client`. Single file at `/data/jpos.db` on the Fly volume (no separate service, unlike Qdrant). `DATABASE_URL` overrides; keeps a clean upgrade path to managed/replicated Turso (`libsql://...`) without code changes.
+- **Schema source of truth lives in-repo, not in the DB:** Zod schemas in `src/db/schemas/*.ts` (shape/validation) + numbered SQL migrations in `src/db/migrations.ts` (structure). Every write is Zod-validated; reads via `db_query` are guarded to read-only single `SELECT`/`WITH`.
+- **Migrations** run on startup (`initDb()` in `src/index.ts`) and idempotently from the MCP server. Tracked in a `_migrations` table.
+- **Backups (Litestream):** `scripts/docker-entrypoint.sh` runs the app under Litestream when `LITESTREAM_BUCKET` is set — continuous replication of `jpos.db` to an S3-compatible bucket (Fly Tigris / Cloudflare R2) with point-in-time restore, plus auto-restore on a fresh volume. No-op when unset (local dev). Config in `litestream.yml`. Fly volume daily snapshots are a second safety net.
+
+### Adding a new table
+
+1. Add a Zod schema in `src/db/schemas/<table>.ts`.
+2. Append a migration entry to `src/db/migrations.ts` (never edit shipped ones).
+3. Add typed write helpers in `src/db/<table>.ts` (validate via the Zod schema).
+4. Register a doc entry in `TABLE_DOCS` + a write tool in `src/mcp/db.ts`, and add the tool names to `allowedTools` in `src/agent.ts`.
+
+Reads need no per-table tool — the generic `db_query` covers any table immediately.
+
+### Required env vars
+
+- `DATABASE_URL` (default `file:/data/jpos.db`)
+- Litestream (all optional; backups disabled unless `LITESTREAM_BUCKET` is set): `LITESTREAM_BUCKET`, `LITESTREAM_ENDPOINT`, `LITESTREAM_REGION`, `LITESTREAM_ACCESS_KEY_ID`, `LITESTREAM_SECRET_ACCESS_KEY`
 
 ### Inspecting memory
 
